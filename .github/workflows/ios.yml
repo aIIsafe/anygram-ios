@@ -20,7 +20,9 @@ jobs:
         run: brew install xcodegen
 
       - name: Generate Xcode project (CI scaffold)
-        run: xcodegen generate --spec project.ci.yml
+        run: |
+          echo "CI uses project.ci.yml without TDLibKit; device builds use project.yml for real Telegram sync."
+          xcodegen generate --spec project.ci.yml
 
       - name: Archive
         run: |

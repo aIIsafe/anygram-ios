@@ -8,9 +8,24 @@ import TDLibKit
 public final class TDLibUserService: UserServiceProtocol, @unchecked Sendable {
     private let contactsSubject = CurrentValueSubject<[User], Never>([])
     private var cachedCurrentUser: User?
+    private var updateHandlerID: UUID?
     private let lock = NSLock()
 
-    public init() {}
+    public init() {
+        _ = TDLibSession.shared.ensureClient { _, _ in }
+        updateHandlerID = TDLibUpdateRouter.shared.addHandler { [weak self] update in
+            if case .updateAuthorizationState(let state) = update,
+               case .authorizationStateReady = state.authorizationState {
+                Task { _ = try? await self?.fetchContacts() }
+            }
+        }
+    }
+
+    deinit {
+        if let updateHandlerID {
+            TDLibUpdateRouter.shared.removeHandler(updateHandlerID)
+        }
+    }
 
     public func fetchCurrentUser() async throws -> User? {
         guard let client = TDLibSession.shared.tdClient else { return nil }
@@ -24,13 +39,16 @@ public final class TDLibUserService: UserServiceProtocol, @unchecked Sendable {
     }
 
     public func fetchContacts() async throws -> [User] {
-        if let cachedCurrentUser {
-            return [cachedCurrentUser]
+        guard let client = TDLibSession.shared.tdClient else { return [] }
+        let contacts = try await client.getContacts()
+        var users: [User] = []
+        for userId in contacts.userIds {
+            guard let tdUser = try? await client.getUser(userId: userId) else { continue }
+            users.append(Self.mapTDLibUser(tdUser))
         }
-        if let current = try await fetchCurrentUser() {
-            return [current]
-        }
-        return []
+        users.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        contactsSubject.send(users)
+        return users
     }
 
     public func fetchContact(id: UUID) async throws -> User? {

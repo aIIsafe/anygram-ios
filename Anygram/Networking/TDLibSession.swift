@@ -3,14 +3,15 @@ import Foundation
 #if canImport(TDLibKit)
 import TDLibKit
 
-/// Shared TDLib client used by auth, user, and future chat services.
+/// Shared TDLib client lifecycle — mirrors BetterTG `TDLib.swift` bootstrap.
 public final class TDLibSession: @unchecked Sendable {
     public static let shared = TDLibSession()
 
     private let lock = NSLock()
     private var manager: TDLibClientManager?
     private var client: TDLibClient?
-    private var updateHandler: ((Data, TDLibClient) -> Void)?
+    private var updateHandlers: [(Data, TDLibClient) -> Void] = []
+    private var bootstrapStarted = false
 
     private init() {}
 
@@ -23,29 +24,58 @@ public final class TDLibSession: @unchecked Sendable {
     @discardableResult
     public func ensureClient(updateHandler: @escaping (Data, TDLibClient) -> Void) -> TDLibClient {
         lock.lock()
-        defer { lock.unlock() }
-        self.updateHandler = updateHandler
+        updateHandlers.append(updateHandler)
         if manager == nil {
             manager = TDLibClientManager()
         }
         if client == nil, let manager {
             client = manager.createClient { [weak self] data, tdClient in
-                self?.updateHandler?(data, tdClient)
+                self?.dispatchUpdate(data: data, client: tdClient)
             }
         }
-        guard let client else {
+        let activeClient = client
+        let shouldBootstrap = client != nil && !bootstrapStarted
+        if shouldBootstrap {
+            bootstrapStarted = true
+        }
+        lock.unlock()
+
+        if shouldBootstrap, let activeClient {
+            startBootstrap(client: activeClient)
+        }
+
+        guard let activeClient else {
             fatalError("TDLib client failed to initialize")
         }
-        return client
+        return activeClient
     }
 
     public func close() {
         lock.lock()
-        defer { lock.unlock() }
         manager?.closeClients()
         client = nil
         manager = nil
-        updateHandler = nil
+        updateHandlers.removeAll()
+        bootstrapStarted = false
+        lock.unlock()
+    }
+
+    private func dispatchUpdate(data: Data, client: TDLibClient) {
+        lock.lock()
+        let handlers = updateHandlers
+        lock.unlock()
+        for handler in handlers {
+            handler(data, client)
+        }
+        TDLibUpdateRouter.shared.route(data: data, client: client)
+    }
+
+    /// BetterTG applies proxy and silences logs before auth parameters.
+    private func startBootstrap(client: TDLibClient) {
+        Task {
+            try? await client.setLogStream(logStream: .logStreamEmpty) { _ in }
+            await TDLibProxyApplier.applyForcedProxy(client: client)
+        }
     }
 }
 #endif

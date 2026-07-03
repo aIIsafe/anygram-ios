@@ -300,7 +300,7 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
                 systemVersion: ProcessInfo.processInfo.operatingSystemVersionString,
                 applicationVersion: TelegramAPIConfiguration.applicationVersion,
                 useMessageDatabase: true,
-                useSecretChats: false,
+                useSecretChats: true,
                 databaseDirectory: TelegramAPIConfiguration.databaseDirectoryPath,
                 filesDirectory: TelegramAPIConfiguration.filesDirectoryPath,
                 useFileDatabase: true,
@@ -309,9 +309,6 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
             )
             _ = try await client.setTdlibParameters(parameters: params)
             parametersApplied = true
-            if let client = TDLibSession.shared.tdClient {
-                await TDLibProxyApplier.applyForcedProxy(client: client)
-            }
         } catch {
             currentState = .closed
             onStateChange?(currentState)

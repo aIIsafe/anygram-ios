@@ -55,4 +55,8 @@ public final class ChatRepository: ObservableObject {
     public func typingPublisher(for chatID: UUID) -> AnyPublisher<TypingStatus, Never> {
         chatService.typingPublisher(for: chatID)
     }
+
+    public func observeChats() -> AnyPublisher<[Chat], Never> {
+        chatService.observeChats()
+    }
 }

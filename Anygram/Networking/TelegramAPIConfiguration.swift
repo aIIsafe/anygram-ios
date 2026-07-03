@@ -31,20 +31,22 @@ enum TelegramAPIConfiguration {
     static let applicationVersion = "1.0.0"
     static let systemLanguageCode = "ru"
     static let deviceModel = "iPhone"
-    static let databaseDirectory = "tdlib"
-    static let filesDirectory = "tdlib_files"
-
+    /// BetterTG stores TDLib data under Documents/td.
     static var databaseDirectoryPath: String {
-        storageRoot.appendingPathComponent(databaseDirectory, isDirectory: true).path
+        tdStorageRoot.path
     }
 
     static var filesDirectoryPath: String {
-        storageRoot.appendingPathComponent(filesDirectory, isDirectory: true).path
+        tdStorageRoot.path
     }
 
-    private static var storageRoot: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Anygram", isDirectory: true)
+    private static var tdStorageRoot: URL {
+        let base = FileManager.default.url(
+            for: .documentDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        ).appending(path: "td", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         return base
     }

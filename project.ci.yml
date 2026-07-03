@@ -1,4 +1,6 @@
 name: Anygram
+# CI scaffold build: no TDLibKit SPM dependency (~300 MB). Uses USE_SCAFFOLD_AUTH mock
+# Telegram layer. Local/release builds must use project.yml (includes TDLibKit + real sync).
 options:
   projectFormat: xcode15
   bundleIdPrefix: com.anygram

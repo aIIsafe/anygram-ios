@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 @MainActor
@@ -13,7 +14,17 @@ final class ChatsViewModel: ObservableObject {
 
     init(repository: ChatRepository) {
         self.repository = repository
+        repository.observeChats()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] chats in
+                guard let self else { return }
+                self.archivedChats = chats.filter(\.isArchived)
+                self.chats = chats.filter { !$0.isArchived }
+            }
+            .store(in: &cancellables)
     }
+
+    private var cancellables = Set<AnyCancellable>()
 
     var filteredChats: [Chat] {
         let source = showArchived ? archivedChats : chats.filter { !$0.isArchived }

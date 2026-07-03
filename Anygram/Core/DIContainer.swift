@@ -47,7 +47,7 @@ public final class DIContainer: ObservableObject {
         self.networkService = TelegramNetworkService(proxyService: proxyService, authService: authService)
         self.authRepository = AuthRepository(authService: authService, networkService: networkService)
 
-        let chatService = MockChatService()
+        let chatService = TelegramChatService(networkConfiguration: networkConfigurationProvider)
         self.chatService = chatService
 
         #if USE_SCAFFOLD_AUTH
