@@ -1,4 +1,4 @@
-import Foundation
+﻿import Foundation
 
 /// Generates realistic fake data for development and previews.
 enum MockDataGenerator {
@@ -6,10 +6,10 @@ enum MockDataGenerator {
     static let avatarColors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7", "#DDA0DD", "#98D8C8", "#F7DC6F", "#BB8FCE", "#85C1E9", "#F8B500", "#E74C3C", "#3498DB", "#2ECC71", "#9B59B6"]
     static let firstNames = ["Alex", "Jordan", "Taylor", "Morgan", "Casey", "Riley", "Quinn", "Avery", "Blake", "Cameron", "Drew", "Emery", "Finley", "Harper", "Hayden", "Jamie", "Kai", "Logan", "Noah", "Parker", "Reese", "River", "Rowan", "Sage", "Skyler"]
     static let lastNames = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez", "Anderson", "Taylor", "Thomas", "Moore", "Jackson", "Martin", "Lee", "Thomson", "White", "Harris", "Clark", "Lewis", "Walker", "Hall", "Young"]
-    static let messageSamples = ["Hey, how are you?", "See you tomorrow!", "Thanks for the info 👍", "Can we meet at 3?", "Check this out", "LOL 😂", "On my way", "Got it, thanks!", "Let's discuss later", "Sent you the files", "Voice message", "Photo", "Video call?", "Missed you at the meeting", "Happy birthday! 🎉", "New project update", "Running late, sorry", "Perfect!", "Will do", "👀"]
+    static let messageSamples = ["Hey, how are you?", "See you tomorrow!", "Thanks for the info рџ‘Ќ", "Can we meet at 3?", "Check this out", "LOL рџ‚", "On my way", "Got it, thanks!", "Let's discuss later", "Sent you the files", "Voice message", "Photo", "Video call?", "Missed you at the meeting", "Happy birthday! рџЋ‰", "New project update", "Running late, sorry", "Perfect!", "Will do", "рџ‘Ђ"]
     static let groupNames = ["Design Team", "Dev Squad", "Weekend Plans", "Family Group", "Book Club", "Travel Buddies", "Crypto Talk", "Music Lovers", "Fitness Crew", "Foodies"]
     static let channelNames = ["Tech News", "Daily Updates", "Announcements", "Tips & Tricks", "Community"]
-    static let emojis = ["👍", "❤️", "🔥", "😂", "🎉", "👀", "💯", "🙏"]
+    static let emojis = ["рџ‘Ќ", "вќ¤пёЏ", "рџ”Ґ", "рџ‚", "рџЋ‰", "рџ‘Ђ", "рџ’Ї", "рџ™Џ"]
 
     static func generateUsers(count: Int = 50) -> [User] {
         var users: [User] = []
@@ -175,24 +175,28 @@ enum MockDataGenerator {
     }
 
     static func generateFolders(chats: [Chat]) -> [Folder] {
-        [
+        let unreadChatIDs = Array(chats.filter { $0.unreadCount > 0 }.prefix(20).map(\.id))
+        return [
             Folder(name: "Personal", icon: "person.fill", chatIDs: Array(chats.prefix(10).map(\.id))),
             Folder(name: "Work", icon: "briefcase.fill", chatIDs: Array(chats.dropFirst(10).prefix(15).map(\.id))),
-            Folder(name: "Unread", icon: "envelope.fill", chatIDs: chats.filter { $0.unreadCount > 0 }.prefix(20).map(\.id))
+            Folder(name: "Unread", icon: "envelope.fill", chatIDs: unreadChatIDs)
         ]
     }
 
     static func generateMedia(for userID: UUID, count: Int = 12) -> [Media] {
         let mediaTypes: [MediaType] = [.photo, .video, .file, .link, .voice]
-        return (0..<count).map { index in
-            Media(
+        var items: [Media] = []
+        items.reserveCapacity(count)
+        for index in 0..<count {
+            items.append(Media(
                 userID: userID,
                 type: mediaTypes[index % mediaTypes.count],
                 title: "Media \(index + 1)",
                 thumbnailColorHex: avatarColors[index % avatarColors.count],
                 date: Date().addingTimeInterval(-Double(index * 86400)),
                 fileSize: Int64(100_000 + index * 50_000)
-            )
+            ))
         }
+        return items
     }
 }
