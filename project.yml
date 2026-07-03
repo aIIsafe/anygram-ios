@@ -1,5 +1,6 @@
 ﻿name: Anygram
 options:
+  projectFormat: xcode15
   bundleIdPrefix: com.anygram
   deploymentTarget:
     iOS: "17.0"
@@ -51,4 +52,3 @@ schemes:
       config: Debug
     archive:
       config: Release
-
