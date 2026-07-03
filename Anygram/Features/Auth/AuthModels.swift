@@ -45,9 +45,19 @@ enum PhoneFormatter {
         return result
     }
 
-    static func internationalNumber(dialCode: String, localNumber: String) -> String {
+    static func internationalNumber(dialCode: String, localNumber: String, country: Country? = nil) -> String {
         let codeDigits = dialCode.filter(\.isNumber)
-        let localDigits = localNumber.filter(\.isNumber)
+        var localDigits = localNumber.filter(\.isNumber)
+
+        if let country {
+            if (country.id == "RU" || country.id == "KZ"), localDigits.hasPrefix("8"), localDigits.count == 11 {
+                localDigits = String(localDigits.dropFirst())
+            }
+            if localDigits.hasPrefix(codeDigits), localDigits.count > codeDigits.count + 6 {
+                localDigits = String(localDigits.dropFirst(codeDigits.count))
+            }
+        }
+
         return "+\(codeDigits)\(localDigits)"
     }
 }

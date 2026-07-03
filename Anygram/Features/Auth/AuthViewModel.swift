@@ -41,7 +41,15 @@ final class AuthViewModel: ObservableObject {
     }
 
     var fullPhoneNumber: String {
-        PhoneFormatter.internationalNumber(dialCode: selectedCountry.dialCode, localNumber: phoneLocal)
+        PhoneFormatter.internationalNumber(
+            dialCode: selectedCountry.dialCode,
+            localNumber: phoneLocal,
+            country: selectedCountry
+        )
+    }
+
+    var usesScaffoldAuth: Bool {
+        authRepository.usesScaffoldAuth
     }
 
     var isAuthenticated: Bool {
@@ -69,8 +77,6 @@ final class AuthViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             try await authRepository.submitPhoneNumber(fullPhoneNumber)
-            step = .code
-            startResendTimer(60)
         } catch {
             errorMessage = error.localizedDescription
         }

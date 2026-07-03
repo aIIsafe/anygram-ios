@@ -19,6 +19,8 @@ public enum AuthError: Error, LocalizedError, Equatable, Sendable {
     case invalidCode
     case invalidPassword
     case networkUnavailable
+    case stillStarting
+    case floodWait(Int)
     case tdlibError(String)
     case unknown
 
@@ -33,7 +35,11 @@ public enum AuthError: Error, LocalizedError, Equatable, Sendable {
         case .invalidPassword:
             return L10n.authInvalidPassword
         case .networkUnavailable:
-            return L10n.authGenericError
+            return L10n.authNetworkError
+        case .stillStarting:
+            return L10n.authStillStarting
+        case .floodWait(let seconds):
+            return L10n.authFloodWait(seconds)
         case .tdlibError(let message):
             return message
         case .unknown:
@@ -44,6 +50,8 @@ public enum AuthError: Error, LocalizedError, Equatable, Sendable {
 
 /// Clean-architecture auth boundary. Real implementation uses TDLib when available.
 public protocol AuthServiceProtocol: Sendable {
+    /// True when CI scaffold or simulator mock auth is active (no real Telegram SMS).
+    var usesScaffoldAuth: Bool { get }
     var authorizationState: AuthAuthorizationState { get }
     var authorizationStatePublisher: AnyPublisher<AuthAuthorizationState, Never> { get }
     var isAuthenticated: Bool { get }

@@ -15,6 +15,10 @@ public final class AuthRepository: @unchecked Sendable {
         authService.isAuthenticated
     }
 
+    public var usesScaffoldAuth: Bool {
+        authService.usesScaffoldAuth
+    }
+
     public var authorizationState: AuthAuthorizationState {
         authService.authorizationState
     }

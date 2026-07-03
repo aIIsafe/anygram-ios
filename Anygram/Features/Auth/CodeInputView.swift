@@ -12,7 +12,7 @@ struct CodeInputView: View {
                     .foregroundStyle(AppColors.textPrimary)
                     .padding(.top, AppSpacing.xxl)
 
-                Text(L10n.authCodeHint)
+                Text(viewModel.usesScaffoldAuth ? L10n.authScaffoldCodeHint : L10n.authCodeHint)
                     .font(AppTypography.subheadline)
                     .foregroundStyle(AppColors.textSecondary)
                     .multilineTextAlignment(.center)

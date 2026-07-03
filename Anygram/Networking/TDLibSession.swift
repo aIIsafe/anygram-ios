@@ -57,6 +57,7 @@ public final class TDLibSession: @unchecked Sendable {
         manager = nil
         updateHandlers.removeAll()
         bootstrapStarted = false
+        bootstrapTask = nil
         lock.unlock()
     }
 
@@ -71,11 +72,17 @@ public final class TDLibSession: @unchecked Sendable {
     }
 
     /// BetterTG applies proxy and silences logs before auth parameters.
+    private var bootstrapTask: Task<Void, Never>?
+
     private func startBootstrap(client: TDLibClient) {
-        Task {
+        bootstrapTask = Task {
             try? await client.setLogStream(logStream: .logStreamEmpty) { _ in }
             await TDLibProxyApplier.applyForcedProxy(client: client)
         }
+    }
+
+    public func awaitBootstrap() async {
+        await bootstrapTask?.value
     }
 }
 #endif

@@ -73,6 +73,14 @@ struct PhoneInputView: View {
                     .padding(.horizontal, AppSpacing.lg)
             }
 
+            if viewModel.usesScaffoldAuth {
+                Text(L10n.authScaffoldNotice)
+                    .font(AppTypography.caption)
+                    .foregroundStyle(AppColors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, AppSpacing.lg)
+            }
+
             Spacer()
 
             Button {

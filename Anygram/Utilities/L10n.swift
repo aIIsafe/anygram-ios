@@ -162,6 +162,15 @@ enum L10n {
     static let authInvalidPassword = String(localized: "auth.invalidPassword")
     static let authGenericError = String(localized: "auth.genericError")
     static let authEditPhone = String(localized: "auth.editPhone")
+    static let authScaffoldNotice = String(localized: "auth.scaffoldNotice")
+    static let authScaffoldCodeHint = String(localized: "auth.scaffoldCodeHint")
+    static let authStillStarting = String(localized: "auth.stillStarting")
+    static let authNetworkError = String(localized: "auth.networkError")
+    static let authAuthorizationFailed = String(localized: "auth.authorizationFailed")
+
+    static func authFloodWait(_ seconds: Int) -> String {
+        String(localized: "auth.floodWait \(seconds)")
+    }
 
     static func authResendCountdown(_ seconds: Int) -> String {
         String(localized: "auth.resendCountdown \(seconds)")

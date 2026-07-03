@@ -1,10 +1,13 @@
 import Combine
 import Foundation
+import os
 
 /// TDLib-backed auth service with compile-time stub for CI builds without TDLibKit.
 public final class TDLibAuthService: AuthServiceProtocol, @unchecked Sendable {
     private let backend: AuthBackend
     private let stateSubject: CurrentValueSubject<AuthAuthorizationState, Never>
+
+    public var usesScaffoldAuth: Bool { AuthBuildConfiguration.usesScaffoldAuth }
 
     public var authorizationState: AuthAuthorizationState {
         stateSubject.value
@@ -110,6 +113,7 @@ private final class ScaffoldAuthBackend: AuthBackend, @unchecked Sendable {
         let digits = phoneNumber.filter(\.isNumber)
         guard digits.count >= 10 else { throw AuthError.invalidPhoneNumber }
         pendingPhone = phoneNumber
+        print("[AnygramAuth] Scaffold mode: simulating SMS for \(phoneNumber) — no real Telegram code is sent")
         try await Task.sleep(nanoseconds: 600_000_000)
         currentState = .waitCode(codeLength: 5, resendTimeout: 60)
         onStateChange?(currentState)
@@ -164,6 +168,8 @@ private final class ScaffoldAuthBackend: AuthBackend, @unchecked Sendable {
 #if canImport(TDLibKit)
 import TDLibKit
 
+private let authLogger = Logger(subsystem: "com.anygram.app", category: "TDLibAuth")
+
 private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
     var onStateChange: (@Sendable (AuthAuthorizationState) -> Void)?
     private(set) var currentState: AuthAuthorizationState = .unknown
@@ -178,23 +184,23 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         _ = TDLibSession.shared.ensureClient { [weak self] data, client in
             self?.handleUpdate(data: data, client: client)
         }
-        try await Task.sleep(nanoseconds: 500_000_000)
-        stateLock.lock()
-        let state = currentState
-        stateLock.unlock()
-        if case .unknown = state {
-            currentState = .waitPhoneNumber
-            onStateChange?(currentState)
-        }
+        await TDLibSession.shared.awaitBootstrap()
+        try await waitForPhoneNumberState(timeout: 30)
     }
 
     func setPhoneNumber(_ phoneNumber: String) async throws {
         guard let client = TDLibSession.shared.tdClient else { throw AuthError.notConfigured }
-        let digits = phoneNumber.filter(\.isNumber)
+        let normalized = Self.normalizePhoneNumber(phoneNumber)
+        let digits = normalized.filter(\.isNumber)
         guard digits.count >= 10 else { throw AuthError.invalidPhoneNumber }
+
+        await TDLibProxyApplier.applyForcedProxy(client: client)
+        try await waitForPhoneNumberState(timeout: 15)
+
+        authLogger.info("setAuthenticationPhoneNumber \(normalized, privacy: .private)")
         do {
             _ = try await client.setAuthenticationPhoneNumber(
-                phoneNumber: phoneNumber,
+                phoneNumber: normalized,
                 settings: nil
             )
         } catch {
@@ -254,6 +260,7 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
     }
 
     private func processAuthorizationState(_ state: AuthorizationState) async {
+        authLogger.debug("authorization state: \(String(describing: state), privacy: .public)")
         switch state {
         case .authorizationStateWaitTdlibParameters:
             await applyTdlibParameters()
@@ -310,9 +317,50 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
             _ = try await client.setTdlibParameters(parameters: params)
             parametersApplied = true
         } catch {
+            authLogger.error("setTdlibParameters failed: \(error.localizedDescription, privacy: .public)")
             currentState = .closed
             onStateChange?(currentState)
         }
+    }
+
+    private func waitForPhoneNumberState(timeout: TimeInterval) async throws {
+        if case .waitPhoneNumber = currentState { return }
+
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if case .waitPhoneNumber = currentState { return }
+            if case .closed = currentState {
+                throw AuthError.tdlibError(L10n.authAuthorizationFailed)
+            }
+
+            if let client = TDLibSession.shared.tdClient,
+               let state = try? await client.getAuthorizationState() {
+                await processAuthorizationState(state)
+                if case .authorizationStateWaitPhoneNumber = state { return }
+                if case .authorizationStateClosed = state {
+                    throw AuthError.tdlibError(L10n.authAuthorizationFailed)
+                }
+                if case .authorizationStateWaitTdlibParameters = state {
+                    await applyTdlibParameters()
+                }
+            }
+            try await Task.sleep(nanoseconds: 250_000_000)
+        }
+        throw AuthError.stillStarting
+    }
+
+    private static func normalizePhoneNumber(_ phoneNumber: String) -> String {
+        var digits = phoneNumber.filter(\.isNumber)
+        guard !digits.isEmpty else { return phoneNumber }
+
+        if !phoneNumber.hasPrefix("+"), digits.hasPrefix("8"), digits.count == 11 {
+            digits = String(digits.dropFirst())
+        }
+
+        if phoneNumber.hasPrefix("+") {
+            return "+\(digits)"
+        }
+        return "+\(digits)"
     }
 
     private func mapTDLibError(
@@ -320,14 +368,52 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         invalidCode: Bool = false,
         invalidPassword: Bool = false
     ) -> AuthError {
-        let message = error.localizedDescription.lowercased()
-        if invalidCode, message.contains("phone") || message.contains("code") || message.contains("400") {
+        let message = error.localizedDescription
+        let lowered = message.lowercased()
+
+        if lowered.contains("flood") {
+            let seconds = Self.extractFloodWaitSeconds(from: message) ?? 60
+            return .floodWait(seconds)
+        }
+        if lowered.contains("network") || lowered.contains("timeout") || lowered.contains("connection") {
+            return .networkUnavailable
+        }
+        if lowered.contains("phone number invalid") || lowered.contains("phone_number_invalid") {
+            return .invalidPhoneNumber
+        }
+        if lowered.contains("wait") && lowered.contains("authorization") {
+            return .stillStarting
+        }
+        if invalidCode, lowered.contains("phone") || lowered.contains("code") || lowered.contains("400") {
             return .invalidCode
         }
-        if invalidPassword, message.contains("password") || message.contains("400") {
+        if invalidPassword, lowered.contains("password") || lowered.contains("400") {
             return .invalidPassword
         }
-        return .tdlibError(error.localizedDescription)
+        return .tdlibError(Self.russianErrorMessage(from: message))
+    }
+
+    private static func extractFloodWaitSeconds(from message: String) -> Int? {
+        let pattern = /(\d+)/
+        if let match = message.firstMatch(of: pattern) {
+            return Int(match.1)
+        }
+        return nil
+    }
+
+    private static func russianErrorMessage(from message: String) -> String {
+        let lowered = message.lowercased()
+        if lowered.contains("phone number invalid") || lowered.contains("phone_number_invalid") {
+            return L10n.authInvalidPhone
+        }
+        if lowered.contains("network") || lowered.contains("timeout") {
+            return L10n.authNetworkError
+        }
+        if lowered.contains("flood") {
+            let seconds = extractFloodWaitSeconds(from: message) ?? 60
+            return L10n.authFloodWait(seconds)
+        }
+        return message
     }
 
     private static func mapTDLibUser(_ tdUser: TDLibKit.User) -> User {

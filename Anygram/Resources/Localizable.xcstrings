@@ -870,6 +870,42 @@
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Edit phone number" } },
         "ru" : { "stringUnit" : { "state" : "translated", "value" : "Изменить номер" } }
       }
+    },
+    "auth.scaffoldNotice" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Test build: Telegram SMS is not sent. Install a TDLib build for real sign-in. Any 5-digit code works here." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Тестовая сборка: SMS от Telegram не отправляется. Для реального входа установите сборку с TDLib. Здесь подойдёт любой 5-значный код." } }
+      }
+    },
+    "auth.scaffoldCodeHint" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Simulated code step — enter any 5 digits." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Код имитируется — введите любые 5 цифр." } }
+      }
+    },
+    "auth.stillStarting" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "App is still starting. Wait a few seconds and try again." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Приложение ещё запускается. Подождите несколько секунд и попробуйте снова." } }
+      }
+    },
+    "auth.networkError" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Network error. Check your connection or proxy." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Ошибка сети. Проверьте подключение или прокси." } }
+      }
+    },
+    "auth.authorizationFailed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Authorization failed. Restart the app and try again." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Ошибка авторизации. Перезапустите приложение и попробуйте снова." } }
+      }
+    },
+    "auth.floodWait %lld" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Too many attempts. Try again in %lld seconds." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Слишком много попыток. Повторите через %lld сек." } }
+      }
     }
   },
   "version" : "1.0"
