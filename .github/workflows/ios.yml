@@ -1,0 +1,85 @@
+﻿name: iOS Build
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build-ipa:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Archive
+        run: |
+          xcodegen generate
+          xcodebuild archive \
+            -project Anygram.xcodeproj \
+            -scheme Anygram \
+            -configuration Release \
+            -archivePath $RUNNER_TEMP/Anygram.xcarchive \
+            -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
+
+      - name: Export IPA (unsigned)
+        run: |
+          cat > $RUNNER_TEMP/ExportOptions.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>development</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>compileBitcode</key>
+            <false/>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath $RUNNER_TEMP/Anygram.xcarchive \
+            -exportPath $RUNNER_TEMP/export \
+            -exportOptionsPlist $RUNNER_TEMP/ExportOptions.plist \
+            CODE_SIGNING_ALLOWED=NO || true
+
+      - name: Package IPA fallback
+        run: |
+          set -e
+          if [ -f "$RUNNER_TEMP/export/Anygram.ipa" ]; then
+            cp "$RUNNER_TEMP/export/Anygram.ipa" "$RUNNER_TEMP/Anygram.ipa"
+          elif [ -f "$RUNNER_TEMP/Anygram.ipa" ]; then
+            true
+          else
+            APP_PATH=$(find "$RUNNER_TEMP/Anygram.xcarchive/Products" -name "*.app" | head -1)
+            if [ -n "$APP_PATH" ]; then
+              mkdir -p "$RUNNER_TEMP/Payload"
+              cp -r "$APP_PATH" "$RUNNER_TEMP/Payload/"
+              cd "$RUNNER_TEMP" && zip -r Anygram.ipa Payload
+            else
+              echo "No .app found in archive"
+              exit 1
+            fi
+          fi
+          ls -la "$RUNNER_TEMP/Anygram.ipa"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Anygram-ipa
+          path: ${{ runner.temp }}/Anygram.ipa
+          if-no-files-found: error
