@@ -14,7 +14,7 @@ import Foundation
 /// 4. Build — `TDLibAuthService` automatically uses the real client via `#if canImport(TDLibKit)`
 enum TelegramAPIConfiguration {
     /// Bump when api_id/hash or TDLib layout changes — triggers Documents/td wipe on next launch.
-    static let tdlibStorageSchemaVersion = 6
+    static let tdlibStorageSchemaVersion = 7
 
     private static let storedVersionKey = "anygram.tdlib.storageVersion"
     private static let storedApiIdKey = "anygram.tdlib.lastApiId"

@@ -248,13 +248,14 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         AppDebugLogger.shared.log("setPhoneNumber start phone=\(masked)", category: .AUTH)
 
         try await AsyncTimeout.withTimeout(seconds: 15, error: AuthError.tdlibError("TIMEOUT at step submitPhoneNumber (15s)")) {
-            try await self.submitPhoneNumberFlow(phoneNumber: phoneNumber, masked: masked)
+            try await self.submitPhoneNumberFlow(phoneNumber: phoneNumber, masked: masked, isRetry: false)
         }
     }
 
     private func submitPhoneNumberFlow(
         phoneNumber: String,
-        masked: String
+        masked: String,
+        isRetry: Bool
     ) async throws {
         guard TDLibSession.shared.tdClient != nil else {
             AppDebugLogger.shared.log("setPhoneNumber: no tdClient", category: .ERROR)
@@ -296,16 +297,18 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         } catch {
             let rawMessage = Self.rawTDLibErrorMessage(from: error)
             AppDebugLogger.shared.log("setAuthenticationPhoneNumber Telegram error: \(rawMessage)", category: .ERROR)
+            if rawMessage.localizedCaseInsensitiveContains("API_ID_INVALID"), !isRetry {
+                AppDebugLogger.shared.log("[AUTH] API_ID_INVALID — wipe DB, reset, retry once", category: .AUTH)
+                try await recoverFromApiIdInvalid()
+                try await submitPhoneNumberFlow(phoneNumber: phoneNumber, masked: masked, isRetry: true)
+                return
+            }
             let mapped = mapTDLibError(error)
-            if Self.isApiIdInvalid(mapped) {
-                AppDebugLogger.shared.log("[AUTH] API_ID_INVALID — wiping TDLib DB, resetting client (no retry)", category: .AUTH)
-                TelegramAPIConfiguration.wipeTdStorageForRecovery()
-                TDLibSession.shared.resetClient()
-                stateLock.lock()
-                parametersApplied = false
-                parametersApplyInProgress = false
-                stateLock.unlock()
-                throw mapped
+            if Self.isApiIdInvalid(mapped), !isRetry {
+                AppDebugLogger.shared.log("[AUTH] API_ID_INVALID (mapped) — wipe DB, reset, retry once", category: .AUTH)
+                try await recoverFromApiIdInvalid()
+                try await submitPhoneNumberFlow(phoneNumber: phoneNumber, masked: masked, isRetry: true)
+                return
             }
             throw mapped
         }
@@ -595,7 +598,6 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
                 TDLibAccessGate.shared.markParametersApplied()
                 AppDebugLogger.shared.log("[AUTH] verified \(verifyName) after setTdlibParameters", category: .AUTH)
                 await processAuthorizationState(verifyState)
-                await TDLibProxyApplier.applyDefaultProxy(client: client)
             case .authorizationStateWaitTdlibParameters:
                 AppDebugLogger.shared.log("[AUTH] setTdlibParameters OK but TDLib still waitTdlibParameters", category: .ERROR)
             default:
@@ -660,6 +662,19 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         parametersApplied = false
         stateLock.unlock()
         throw AuthError.stillStarting
+    }
+
+    /// Wipe stale TDLib DB and re-bootstrap after API_ID_INVALID (stale api_id in database).
+    private func recoverFromApiIdInvalid() async throws {
+        TelegramAPIConfiguration.wipeTdStorageForRecovery()
+        TDLibSession.shared.resetClient()
+        parametersApplyLock.lock()
+        parametersApplied = false
+        parametersApplyInProgress = false
+        activeParametersApplyTask = nil
+        parametersApplyLock.unlock()
+        TDLibAccessGate.shared.reset()
+        try await initialize()
     }
 
     private static func isApiIdInvalid(_ error: AuthError) -> Bool {
@@ -727,11 +742,12 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
     }
 
     private static func rawTDLibErrorMessage(from error: Swift.Error) -> String {
+        if let tdError = error as? TDLibKit.Error {
+            return tdError.message
+        }
         let nsError = error as NSError
-        if nsError.domain.contains("TDLib") || nsError.localizedDescription.contains("TDLib") {
-            if let message = nsError.userInfo["message"] as? String, !message.isEmpty {
-                return message
-            }
+        if let message = nsError.userInfo["message"] as? String, !message.isEmpty {
+            return message
         }
         if let message = (error as? LocalizedError)?.errorDescription, !message.isEmpty {
             return message
@@ -751,7 +767,7 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         let lowered = message.lowercased()
 
         if lowered.contains("api_id_invalid") {
-            return .tdlibError(message)
+            return .tdlibError("\(L10n.authInvalidApiId) (\(message)). Укажите Short name на my.telegram.org.")
         }
         if lowered.contains("flood") {
             let seconds = Self.extractFloodWaitSeconds(from: message) ?? 60

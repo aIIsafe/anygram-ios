@@ -41,6 +41,9 @@ public final class TelegramNetworkService: @unchecked Sendable {
             return
         }
 
+        lock.lock()
+        loginSessionPrepared = false
+        lock.unlock()
         if alreadyPrepared && !parametersReady {
             AppDebugLogger.shared.log("bootstrapForLogin: session prepared but TDLib params missing — re-initialize", category: .NETWORK)
         } else {

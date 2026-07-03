@@ -173,6 +173,9 @@ public final class TDLibSession: @unchecked Sendable {
                 AppDebugLogger.shared.log("setLogStream FAILED: \(error.localizedDescription)", category: .ERROR)
             }
             AppDebugLogger.shared.log("bootstrap: setLogStream phase done", category: .TDLIB)
+            Task.detached(priority: .utility) {
+                await TDLibProxyApplier.applyDefaultProxy(client: client)
+            }
         }
     }
 
