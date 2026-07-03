@@ -7,7 +7,7 @@ enum AsyncTimeout {
         operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
         let timeoutError = error()
-        try await withThrowingTaskGroup(of: T.self) { group in
+        return try await withThrowingTaskGroup(of: T.self) { group in
             group.addTask {
                 try await operation()
             }
@@ -29,7 +29,7 @@ enum AsyncTimeout {
         operation: @escaping @Sendable () async -> T
     ) async throws -> T {
         let timeoutError = error()
-        try await withThrowingTaskGroup(of: T.self) { group in
+        return try await withThrowingTaskGroup(of: T.self) { group in
             group.addTask {
                 await operation()
             }
