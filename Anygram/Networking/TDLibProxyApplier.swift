@@ -29,7 +29,7 @@ enum TDLibProxyApplier {
         lock.unlock()
 
         AuthConnectionStatus.post(.connectingProxy)
-        var lastError: (any Error)?
+        var lastError: AuthError?
 
         for attempt in 1...maxAttempts {
             do {
@@ -52,14 +52,14 @@ enum TDLibProxyApplier {
                 lock.unlock()
                 return
             } catch {
-                lastError = error
+                lastError = mapProxyError(error)
                 if attempt < maxAttempts {
                     try? await Task.sleep(nanoseconds: retryDelayNanoseconds)
                 }
             }
         }
 
-        throw lastError.map { mapProxyError($0) } ?? AuthError.proxyConnectionFailed
+        throw lastError ?? AuthError.proxyConnectionFailed
     }
 
     static func resetAppliedProxy() {

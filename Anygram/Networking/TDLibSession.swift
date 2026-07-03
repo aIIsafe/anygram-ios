@@ -12,7 +12,8 @@ public final class TDLibSession: @unchecked Sendable {
     private var client: TDLibClient?
     private var updateHandlers: [(Data, TDLibClient) -> Void] = []
     private var bootstrapStarted = false
-    private var bootstrapTask: Task<Void, any Error>?
+    private var bootstrapTask: Task<Void, Never>?
+    private var bootstrapError: AuthError?
 
     private init() {}
 
@@ -59,6 +60,7 @@ public final class TDLibSession: @unchecked Sendable {
         updateHandlers.removeAll()
         bootstrapStarted = false
         bootstrapTask = nil
+        bootstrapError = nil
         lock.unlock()
         TDLibProxyApplier.resetAppliedProxy()
     }
@@ -76,8 +78,14 @@ public final class TDLibSession: @unchecked Sendable {
     /// BetterTG applies proxy and silences logs before auth parameters.
     private func startBootstrap(client: TDLibClient) {
         bootstrapTask = Task {
-            try? await client.setLogStream(logStream: .logStreamEmpty) { _ in }
-            try await TDLibProxyApplier.applyForcedProxy(client: client)
+            do {
+                try? await client.setLogStream(logStream: .logStreamEmpty) { _ in }
+                try await TDLibProxyApplier.applyForcedProxy(client: client)
+            } catch let error as AuthError {
+                bootstrapError = error
+            } catch {
+                bootstrapError = .proxyConnectionFailed
+            }
         }
     }
 
@@ -85,7 +93,10 @@ public final class TDLibSession: @unchecked Sendable {
         let task = lock.withLock { bootstrapTask }
         guard let task else { return }
         try await AsyncTimeout.withTimeout(seconds: timeout, error: AuthError.stillStarting) {
-            try await task.value
+            await task.value
+        }
+        if let bootstrapError = lock.withLock({ bootstrapError }) {
+            throw bootstrapError
         }
     }
 }
