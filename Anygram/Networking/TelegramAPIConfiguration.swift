@@ -17,11 +17,11 @@ enum TelegramAPIConfiguration {
            let value = Int32(env), value > 0 {
             return value
         }
-        return 0
+        return 24053256
     }
 
     static var apiHash: String {
-        ProcessInfo.processInfo.environment["TELEGRAM_API_HASH"] ?? ""
+        ProcessInfo.processInfo.environment["TELEGRAM_API_HASH"] ?? "bc8984a70877b5768a5a6a80222da985"
     }
 
     static var isConfigured: Bool {
