@@ -27,7 +27,7 @@ public final class TDLibSession: @unchecked Sendable {
     private var bootstrapStarted = false
     private var bootstrapTask: Task<Void, Never>?
     private var bootstrapComplete = false
-    private var bootstrapWaiters: [CheckedContinuation<Void, Error>] = []
+    private var bootstrapWaiters: [CheckedContinuation<Void, any Error>] = []
 
     private init() {}
 
@@ -170,7 +170,10 @@ public final class TDLibSession: @unchecked Sendable {
             } catch {
                 AppDebugLogger.shared.log("setLogStream FAILED: \(error.localizedDescription)", category: .ERROR)
             }
-            AppDebugLogger.shared.log("bootstrap: setLogStream phase done (addProxy deferred until setTdlibParameters)", category: .TDLIB)
+            AppDebugLogger.shared.log("bootstrap: setLogStream phase done", category: .TDLIB)
+            Task.detached(priority: .utility) {
+                await TDLibProxyApplier.applyDefaultProxy(client: client)
+            }
         }
     }
 
@@ -211,7 +214,7 @@ public final class TDLibSession: @unchecked Sendable {
 
         AppDebugLogger.shared.log("awaitBootstrap: waiting up to \(Int(timeout))s for waitPhoneNumber", category: .TDLIB)
         try await AsyncTimeout.withTimeout(seconds: timeout, error: AuthError.stillStarting) {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
                 lock.lock()
                 if bootstrapComplete {
                     lock.unlock()
