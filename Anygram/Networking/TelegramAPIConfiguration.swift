@@ -3,8 +3,8 @@ import Foundation
 /// Telegram API credentials and TDLib bootstrap configuration.
 ///
 /// Obtain credentials at https://my.telegram.org/apps
-/// Production pair matches Flutter Anygram (24053256 + hash registered on my.telegram.org).
-/// BetterTG Secret (34053256) shares the hash but is not registered — causes API_ID_INVALID.
+/// Production pair matches Flutter Anygram / fix_workflow.py (24053256 + a5a6a hash).
+/// BetterTG Secret.swift decodes to a different pair (34053256 + e5a6a hash) — do not mix ids/hashes.
 /// Set environment variables `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` to override for local builds.
 ///
 /// TDLib SPM setup (optional, ~300 MB download):
@@ -14,10 +14,11 @@ import Foundation
 /// 4. Build — `TDLibAuthService` automatically uses the real client via `#if canImport(TDLibKit)`
 enum TelegramAPIConfiguration {
     /// Bump when api_id/hash or TDLib layout changes — triggers Documents/td wipe on next launch.
-    static let tdlibStorageSchemaVersion = 5
+    static let tdlibStorageSchemaVersion = 6
 
     private static let storedVersionKey = "anygram.tdlib.storageVersion"
     private static let storedApiIdKey = "anygram.tdlib.lastApiId"
+    private static let storedApiHashKey = "anygram.tdlib.lastApiHash"
 
     static var apiId: Int32 {
         if let env = ProcessInfo.processInfo.environment["TELEGRAM_API_ID"],
@@ -67,17 +68,22 @@ enum TelegramAPIConfiguration {
         let defaults = UserDefaults.standard
         let storedVersion = defaults.integer(forKey: storedVersionKey)
         let storedApiId = defaults.integer(forKey: storedApiIdKey)
+        let storedApiHash = defaults.string(forKey: storedApiHashKey) ?? ""
         let currentApiId = Int(apiId)
+        let currentApiHash = apiHash
 
         let needsWipe = storedVersion != tdlibStorageSchemaVersion
             || storedApiId != currentApiId
+            || storedApiHash != currentApiHash
             || storedApiId <= 0
             || currentApiId <= 0
+            || storedApiHash.isEmpty
 
         if needsWipe {
-            wipeTdStorage(reason: "migration v\(storedVersion)→v\(tdlibStorageSchemaVersion) apiId \(storedApiId)→\(currentApiId)")
+            wipeTdStorage(reason: "migration v\(storedVersion)→v\(tdlibStorageSchemaVersion) apiId \(storedApiId)→\(currentApiId) hashChanged=\(storedApiHash != currentApiHash)")
             defaults.set(tdlibStorageSchemaVersion, forKey: storedVersionKey)
             defaults.set(currentApiId, forKey: storedApiIdKey)
+            defaults.set(currentApiHash, forKey: storedApiHashKey)
         }
     }
 

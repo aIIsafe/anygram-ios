@@ -175,13 +175,11 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
     private(set) var currentState: AuthAuthorizationState = .unknown
     private var parametersApplied = false
     private var parametersApplyInProgress = false
+    private var activeParametersApplyTask: Task<Void, Never>?
     private var cachedUser: User?
     private let stateLock = NSLock()
     /// Ensures exactly one setTdlibParameters call per client lifetime.
     private let parametersApplyLock = NSLock()
-    private var parametersApplyWaiters: [CheckedContinuation<Void, Never>] = []
-    /// Serial queue for setTdlibParameters and other auth bootstrap calls (BetterTG-style).
-    private let authQueue = DispatchQueue(label: "com.anygram.tdlib.auth", qos: .userInitiated)
 
     init() {
         NotificationCenter.default.addObserver(
@@ -189,9 +187,13 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
             object: nil,
             queue: nil
         ) { [weak self] _ in
-            self?.stateLock.lock()
+            self?.parametersApplyLock.lock()
             self?.parametersApplied = false
             self?.parametersApplyInProgress = false
+            self?.activeParametersApplyTask?.cancel()
+            self?.activeParametersApplyTask = nil
+            self?.parametersApplyLock.unlock()
+            self?.stateLock.lock()
             self?.cachedUser = nil
             self?.currentState = .unknown
             self?.stateLock.unlock()
@@ -338,21 +340,29 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
                 return
 
             case .authorizationStateWaitPhoneNumber:
-                stateLock.lock()
+                parametersApplyLock.lock()
                 let applied = parametersApplied
-                stateLock.unlock()
-                if applied && TDLibAccessGate.shared.areParametersApplied {
-                    AppDebugLogger.shared.log("[AUTH] auth state OK: waitPhoneNumber, params verified", category: .AUTH)
-                    return
+                parametersApplyLock.unlock()
+                guard applied && TDLibAccessGate.shared.areParametersApplied else {
+                    AppDebugLogger.shared.log("[AUTH] waitPhoneNumber but params not verified — re-checking", category: .AUTH)
+                    await applyTdlibParameters()
+                    try await waitForPhoneNumberState(timeout: 12)
+                    guard TDLibAccessGate.shared.areParametersApplied else {
+                        throw AuthError.stillStarting
+                    }
+                    break
                 }
-                AppDebugLogger.shared.log("[AUTH] waitPhoneNumber but setTdlibParameters never applied — wiping stale DB", category: .AUTH)
-                TelegramAPIConfiguration.wipeTdStorageForRecovery()
-                TDLibSession.shared.resetClient()
-                stateLock.lock()
-                parametersApplied = false
-                stateLock.unlock()
-                try await TDLibSession.shared.awaitBootstrap(timeout: 12)
-                continue
+                let recheck = try await getAuthorizationState(
+                    client: activeClient,
+                    label: "before phone verify"
+                )
+                guard case .authorizationStateWaitPhoneNumber = recheck else {
+                    let name = Self.authorizationStateName(recheck)
+                    AppDebugLogger.shared.log("[AUTH] pre-phone recheck failed: \(name)", category: .ERROR)
+                    throw AuthError.stillStarting
+                }
+                AppDebugLogger.shared.log("[AUTH] auth state OK: waitPhoneNumber, params verified", category: .AUTH)
+                return
 
             default:
                 let name = Self.authorizationStateName(authState)
@@ -424,7 +434,19 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
             let stateName = Self.authorizationStateName(authUpdate.authorizationState)
             AppDebugLogger.shared.log("updateAuthorizationState: \(stateName)", category: .TDLIB)
             if case .authorizationStateWaitTdlibParameters = authUpdate.authorizationState {
-                Task { await self.applyTdlibParameters() }
+                parametersApplyLock.lock()
+                let skip = parametersApplied
+                    || parametersApplyInProgress
+                    || TDLibAccessGate.shared.areParametersApplied
+                parametersApplyLock.unlock()
+                if skip {
+                    AppDebugLogger.shared.log(
+                        "[AUTH] waitTdlibParameters update ignored (already applied or in progress)",
+                        category: .AUTH
+                    )
+                } else {
+                    Task { await self.applyTdlibParameters() }
+                }
             } else {
                 Task { await self.processAuthorizationState(authUpdate.authorizationState) }
             }
@@ -482,27 +504,40 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
     }
 
     private func applyTdlibParameters() async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            authQueue.async {
-                Task {
-                    await self.applyTdlibParametersSingleFlight(finish: continuation)
-                }
-            }
+        parametersApplyLock.lock()
+        if parametersApplied || TDLibAccessGate.shared.areParametersApplied {
+            parametersApplyLock.unlock()
+            AppDebugLogger.shared.log("[AUTH] setTdlibParameters SKIPPED (already applied)", category: .AUTH)
+            return
         }
+        if let existing = activeParametersApplyTask {
+            parametersApplyLock.unlock()
+            AppDebugLogger.shared.log("[AUTH] setTdlibParameters SKIPPED (apply in progress) — awaiting", category: .AUTH)
+            await existing.value
+            return
+        }
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.performSetTdlibParametersOnce()
+        }
+        activeParametersApplyTask = task
+        parametersApplyLock.unlock()
+        await task.value
+        parametersApplyLock.lock()
+        activeParametersApplyTask = nil
+        parametersApplyLock.unlock()
     }
 
-    /// Single-flight: concurrent callers queue on waiters instead of duplicate setTdlibParameters.
-    private func applyTdlibParametersSingleFlight(finish: CheckedContinuation<Void, Never>) async {
+    private func performSetTdlibParametersOnce() async {
         parametersApplyLock.lock()
-        if parametersApplied {
+        if parametersApplied || TDLibAccessGate.shared.areParametersApplied {
             parametersApplyLock.unlock()
-            AppDebugLogger.shared.log("[AUTH] setTdlibParameters skipped: already applied", category: .AUTH)
-            finish.resume()
+            AppDebugLogger.shared.log("[AUTH] setTdlibParameters SKIPPED (already applied)", category: .AUTH)
             return
         }
         if parametersApplyInProgress {
-            parametersApplyWaiters.append(finish)
             parametersApplyLock.unlock()
+            AppDebugLogger.shared.log("[AUTH] setTdlibParameters SKIPPED (apply in progress)", category: .AUTH)
             return
         }
         parametersApplyInProgress = true
@@ -511,13 +546,7 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         defer {
             parametersApplyLock.lock()
             parametersApplyInProgress = false
-            let waiters = parametersApplyWaiters
-            parametersApplyWaiters = []
             parametersApplyLock.unlock()
-            finish.resume()
-            for waiter in waiters {
-                waiter.resume()
-            }
         }
 
         guard let client = TDLibSession.shared.tdClient else { return }
@@ -554,12 +583,24 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
                 )
             }
             let ms = Int(Date().timeIntervalSince(start) * 1000)
-            parametersApplyLock.lock()
-            parametersApplied = true
-            parametersApplyLock.unlock()
             AppDebugLogger.shared.log("[AUTH] setTdlibParameters OK (\(ms)ms)", category: .AUTH)
-            TDLibAccessGate.shared.markParametersApplied()
-            await TDLibProxyApplier.applyDefaultProxy(client: client)
+
+            let verifyState = try await getAuthorizationState(client: client, label: "after setTdlibParameters")
+            let verifyName = Self.authorizationStateName(verifyState)
+            switch verifyState {
+            case .authorizationStateWaitPhoneNumber:
+                parametersApplyLock.lock()
+                parametersApplied = true
+                parametersApplyLock.unlock()
+                TDLibAccessGate.shared.markParametersApplied()
+                AppDebugLogger.shared.log("[AUTH] verified \(verifyName) after setTdlibParameters", category: .AUTH)
+                await processAuthorizationState(verifyState)
+                await TDLibProxyApplier.applyDefaultProxy(client: client)
+            case .authorizationStateWaitTdlibParameters:
+                AppDebugLogger.shared.log("[AUTH] setTdlibParameters OK but TDLib still waitTdlibParameters", category: .ERROR)
+            default:
+                AppDebugLogger.shared.log("[AUTH] unexpected state after setTdlibParameters: \(verifyName)", category: .ERROR)
+            }
         } catch {
             let rawMessage = Self.rawTDLibErrorMessage(from: error)
             let isDuplicateApply = rawMessage.localizedCaseInsensitiveContains("unexpected settdlibparameters")
@@ -710,7 +751,7 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         let lowered = message.lowercased()
 
         if lowered.contains("api_id_invalid") {
-            return .tdlibError("\(L10n.authInvalidApiId) (\(message))")
+            return .tdlibError(message)
         }
         if lowered.contains("flood") {
             let seconds = Self.extractFloodWaitSeconds(from: message) ?? 60
@@ -745,7 +786,7 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
     private static func russianErrorMessage(from message: String) -> String {
         let lowered = message.lowercased()
         if lowered.contains("api_id_invalid") {
-            return "\(L10n.authInvalidApiId) (\(message))"
+            return message
         }
         if lowered.contains("phone number invalid") || lowered.contains("phone_number_invalid") {
             return L10n.authInvalidPhone
