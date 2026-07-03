@@ -248,7 +248,6 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         AppDebugLogger.shared.log("setPhoneNumber start phone=\(masked)", category: .AUTH)
 
         try await AsyncTimeout.withTimeout(seconds: 15, error: AuthError.tdlibError("TIMEOUT at step submitPhoneNumber (15s)")) {
-            var lastError: Error?
             for attempt in 0..<2 {
                 do {
                     try await self.submitPhoneNumberFlow(
@@ -258,9 +257,7 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
                     )
                     return
                 } catch {
-                    lastError = error
-                    let isInvalid = Self.isApiIdInvalidError(error)
-                    if isInvalid, attempt == 0 {
+                    if Self.isApiIdInvalidError(error), attempt == 0 {
                         AppDebugLogger.shared.log("[AUTH] API_ID_INVALID — safe recovery, retry once", category: .AUTH)
                         try await self.recoverFromApiIdInvalid()
                         continue
@@ -268,7 +265,6 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
                     throw error
                 }
             }
-            if let lastError { throw lastError }
         }
     }
 
