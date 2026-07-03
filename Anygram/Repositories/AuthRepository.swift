@@ -50,9 +50,9 @@ public final class AuthRepository: @unchecked Sendable {
         if case AuthError.stillStarting = error { return true }
         if case AuthError.networkUnavailable = error { return true }
         if case AuthError.tdlibError(let message) = error {
-            let lowered = message.lowercased()
             if message.contains("TIMEOUT") { return true }
-            if lowered.contains("api_id_invalid") { return true }
+            // API_ID_INVALID recovery is handled inside TDLibAuthBackend — avoid double resetClient crash.
+            if message.lowercased().contains("api_id_invalid") { return false }
         }
         return false
     }

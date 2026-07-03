@@ -41,9 +41,6 @@ public final class TelegramNetworkService: @unchecked Sendable {
             return
         }
 
-        lock.lock()
-        loginSessionPrepared = false
-        lock.unlock()
         if alreadyPrepared && !parametersReady {
             AppDebugLogger.shared.log("bootstrapForLogin: session prepared but TDLib params missing — re-initialize", category: .NETWORK)
         } else {
@@ -69,10 +66,12 @@ public final class TelegramNetworkService: @unchecked Sendable {
         lock.lock()
         loginSessionPrepared = false
         lock.unlock()
-        AppDebugLogger.shared.log("resetLoginBootstrap + resetClient", category: .NETWORK)
+        AppDebugLogger.shared.log("resetLoginBootstrap + resetClientSafely", category: .NETWORK)
         #if canImport(TDLibKit)
         TDLibProxyApplier.resetAppliedProxy()
-        TDLibSession.shared.resetClient()
+        Task {
+            await TDLibSession.shared.resetClientSafely()
+        }
         #endif
     }
 

@@ -28,6 +28,7 @@ public final class TDLibSession: @unchecked Sendable {
     private var bootstrapTask: Task<Void, Never>?
     private var bootstrapComplete = false
     private var bootstrapWaiters: [CheckedContinuation<Void, Never>] = []
+    private var resetTask: Task<Void, Never>?
 
     private init() {}
 
@@ -101,21 +102,40 @@ public final class TDLibSession: @unchecked Sendable {
         return activeClient
     }
 
-    /// Destroy and recreate client when auth is stuck (stale client from failed attempt).
+    /// Destroy and recreate client when auth is stuck — must be called when TDLib is idle.
     public func resetClient() {
-        lock.lock()
-        AppDebugLogger.shared.log("resetClient: closeClients + recreate", category: .TDLIB)
-        manager?.closeClients()
-        manager = TDLibClientManager(logger: AppTDLibLogger.shared)
-        client = manager?.createClient { [weak self] data, tdClient in
-            self?.dispatchUpdate(data: data, client: tdClient)
+        Task {
+            await resetClientSafely()
         }
-        bootstrapStarted = false
+    }
+
+    /// Async safe reset: close TDLib, pause for in-flight callbacks, then recreate.
+    public func resetClientSafely() async {
+        if let existing = resetTask {
+            await existing.value
+            return
+        }
+
+        let task = Task {
+            await self.performResetClientSafely()
+        }
+        resetTask = task
+        await task.value
+        resetTask = nil
+    }
+
+    private func performResetClientSafely() async {
+        AppDebugLogger.shared.log("resetClientSafely: closing clients", category: .TDLIB)
+        lock.lock()
+        bootstrapTask?.cancel()
         bootstrapTask = nil
+        manager?.closeClients()
+        manager = nil
+        client = nil
+        bootstrapStarted = false
         bootstrapComplete = false
         let waiters = bootstrapWaiters
         bootstrapWaiters = []
-        let activeClient = client
         lock.unlock()
 
         for waiter in waiters {
@@ -126,11 +146,29 @@ public final class TDLibSession: @unchecked Sendable {
         TDLibAccessGate.shared.reset()
         NotificationCenter.default.post(name: Self.sessionResetNotification, object: nil)
 
+        try? await Task.sleep(nanoseconds: 600_000_000)
+
+        lock.lock()
+        let handler = primaryUpdateHandler
+        lock.unlock()
+        guard let handler else {
+            AppDebugLogger.shared.log("resetClientSafely: no auth handler registered", category: .ERROR)
+            return
+        }
+
+        lock.lock()
+        AppDebugLogger.shared.log("resetClientSafely: recreating client", category: .TDLIB)
+        manager = TDLibClientManager(logger: AppTDLibLogger.shared)
+        client = manager?.createClient { [weak self] data, tdClient in
+            self?.dispatchUpdate(data: data, client: tdClient)
+        }
+        bootstrapStarted = true
+        let activeClient = client
+        lock.unlock()
+
         if let activeClient {
-            lock.lock()
-            bootstrapStarted = true
-            lock.unlock()
             startBootstrap(client: activeClient)
+            try? await awaitBootstrap(timeout: 15)
         }
     }
 
