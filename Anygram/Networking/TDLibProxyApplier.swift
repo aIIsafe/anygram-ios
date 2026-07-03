@@ -68,7 +68,7 @@ enum TDLibProxyApplier {
         lock.unlock()
     }
 
-    private static func mapProxyError(_ error: Error) -> AuthError {
+    private static func mapProxyError(_ error: any Error) -> AuthError {
         if let authError = error as? AuthError {
             return authError
         }
