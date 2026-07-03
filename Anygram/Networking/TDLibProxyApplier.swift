@@ -1,24 +1,30 @@
 import Foundation
+import os
 
 #if canImport(TDLibKit)
 import TDLibKit
 
+private let proxyLogger = Logger(subsystem: "com.anygram.app", category: "TDLibProxy")
+
 /// Applies the built-in MTProto proxy to TDLib, matching BetterTG `TelegramProxy.swift`.
 enum TDLibProxyApplier {
-    private static let perAttemptTimeout: TimeInterval = 10
+    private static let addProxyTimeout: TimeInterval = 5
     private static let lock = NSLock()
     private static var appliedProxyID: UUID?
 
-    static func applyForcedProxy(client: TDLibClient, proxy: Anygram.Proxy? = nil) async throws {
+    /// BetterTG: call addProxy once at client startup — no ping wait, no throw on failure.
+    static func applyDefaultProxy(client: TDLibClient, proxy: Anygram.Proxy? = nil) async {
         let candidates = await proxyCandidates(preferred: proxy)
-        AuthConnectionStatus.post(.connectingProxy)
-        defer { AuthConnectionStatus.post(.idle) }
 
-        var lastError: AuthError?
         for activeProxy in candidates {
+            if isAlreadyApplied(activeProxy) {
+                proxyLogger.debug("Proxy already applied: \(activeProxy.server, privacy: .public):\(activeProxy.port)")
+                return
+            }
+
             do {
                 _ = try await AsyncTimeout.withTimeout(
-                    seconds: perAttemptTimeout,
+                    seconds: addProxyTimeout,
                     error: AuthError.networkUnavailable
                 ) {
                     try await client.addProxy(
@@ -34,21 +40,24 @@ enum TDLibProxyApplier {
                 lock.lock()
                 appliedProxyID = activeProxy.id
                 lock.unlock()
+                proxyLogger.info("MTProto proxy enabled: \(activeProxy.server, privacy: .public):\(activeProxy.port)")
                 return
-            } catch let authError as AuthError {
-                lastError = authError
             } catch {
-                lastError = .proxyConnectionFailed
+                proxyLogger.error("addProxy failed for \(activeProxy.server, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
         }
-
-        throw lastError ?? AuthError.proxyConnectionFailed
     }
 
     static func resetAppliedProxy() {
         lock.lock()
         appliedProxyID = nil
         lock.unlock()
+    }
+
+    private static func isAlreadyApplied(_ proxy: Anygram.Proxy) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return appliedProxyID == proxy.id
     }
 
     private static func proxyCandidates(preferred: Anygram.Proxy?) async -> [Anygram.Proxy] {

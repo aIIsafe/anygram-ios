@@ -75,10 +75,11 @@ public final class TDLibSession: @unchecked Sendable {
         TDLibUpdateRouter.shared.route(data: data, client: client)
     }
 
-    /// BetterTG silences logs on startup; proxy is applied explicitly during login.
+    /// BetterTG: setLogStream + addProxy once at startup — never block login on proxy ping.
     private func startBootstrap(client: TDLibClient) {
         bootstrapTask = Task {
             try? await client.setLogStream(logStream: .logStreamEmpty) { _ in }
+            await TDLibProxyApplier.applyDefaultProxy(client: client)
         }
     }
 

@@ -186,9 +186,6 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         }
         try await TDLibSession.shared.awaitBootstrap(timeout: 10)
 
-        guard let client = TDLibSession.shared.tdClient else { throw AuthError.notConfigured }
-        try await TDLibProxyApplier.applyForcedProxy(client: client)
-
         AuthConnectionStatus.post(.waitingTdlib)
         try await waitForPhoneNumberState(timeout: 30)
         AuthConnectionStatus.post(.idle)
@@ -200,9 +197,18 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         let digits = normalized.filter(\.isNumber)
         guard digits.count >= 10 else { throw AuthError.invalidPhoneNumber }
 
-        try await TDLibProxyApplier.applyForcedProxy(client: client)
-        AuthConnectionStatus.post(.waitingTdlib)
-        try await waitForPhoneNumberState(timeout: 15)
+        // BetterTG: no addProxy or proxy ping during login — just check auth state and send phone.
+        let authState = try await client.getAuthorizationState()
+        switch authState {
+        case .authorizationStateWaitPhoneNumber:
+            break
+        case .authorizationStateWaitTdlibParameters:
+            AuthConnectionStatus.post(.waitingTdlib)
+            try await waitForPhoneNumberState(timeout: 15)
+        default:
+            authLogger.error("Unexpected auth state before phone submit: \(String(describing: authState), privacy: .public)")
+            throw AuthError.stillStarting
+        }
 
         AuthConnectionStatus.post(.sendingPhone)
         authLogger.info("setAuthenticationPhoneNumber \(normalized, privacy: .private)")

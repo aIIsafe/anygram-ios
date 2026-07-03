@@ -85,7 +85,14 @@ final class AuthViewModel: ObservableObject {
         }
         isLoading = true
         errorMessage = nil
+        let phaseWatchdog = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            if self.isLoading {
+                self.connectionPhase = .idle
+            }
+        }
         defer {
+            phaseWatchdog.cancel()
             isLoading = false
             connectionPhase = .idle
         }

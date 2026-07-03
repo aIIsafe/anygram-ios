@@ -14,7 +14,7 @@ public final class TelegramNetworkService: @unchecked Sendable {
     }
 
     public func bootstrapForLogin() async throws {
-        await proxyService.initializeOnFirstLaunch()
+        // TDLib handles proxy itself — only load config for TDLibProxyBridge, skip mock connect loop.
         let proxies = try await proxyService.fetchProxies()
         let settings = PreferencesStorage.shared.loadSettings()
         let active = proxies.first(where: { $0.id == settings?.activeProxyID && $0.isEnabled })
