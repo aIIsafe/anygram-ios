@@ -42,6 +42,27 @@ public final class TDLibSession: @unchecked Sendable {
         lock.withLock { bootstrapComplete }
     }
 
+    /// Register the auth update handler once — must run before chat/user services init (TDLibAuthBackend.init).
+    public func registerAuthUpdateHandler(_ handler: @escaping (Data, TDLibClient) -> Void) {
+        lock.lock()
+        primaryUpdateHandler = handler
+        lock.unlock()
+        AppDebugLogger.shared.log("registerAuthUpdateHandler", category: .TDLIB)
+    }
+
+    /// Create TDLib client using the previously registered auth handler.
+    @discardableResult
+    public func ensureClient() -> TDLibClient {
+        lock.lock()
+        let handler = primaryUpdateHandler
+        lock.unlock()
+        guard let handler else {
+            AppDebugLogger.shared.log("FATAL: ensureClient() without registerAuthUpdateHandler", category: .ERROR)
+            fatalError("Call registerAuthUpdateHandler before ensureClient()")
+        }
+        return ensureClient(updateHandler: handler)
+    }
+
     /// BetterTG: create client + register update handler before any TDLib calls.
     @discardableResult
     public func ensureClient(updateHandler: @escaping (Data, TDLibClient) -> Void) -> TDLibClient {

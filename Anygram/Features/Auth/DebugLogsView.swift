@@ -35,7 +35,7 @@ struct DebugLogsView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Закрыть") { dismiss() }
+                    Button("Назад") { dismiss() }
                 }
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button {
@@ -60,7 +60,7 @@ struct DebugLogsView: View {
     }
 }
 
-/// Small bug button that opens debug logs sheet.
+/// Small bug button that opens debug logs page (NavigationStack push).
 struct DebugLogsButton: View {
     @Binding var showLogs: Bool
 
@@ -68,10 +68,15 @@ struct DebugLogsButton: View {
         Button {
             showLogs = true
         } label: {
-            Image(systemName: "ladybug.fill")
-                .font(.caption)
-                .foregroundStyle(AppColors.textSecondary)
-                .padding(8)
+            HStack(spacing: 4) {
+                Image(systemName: "ladybug.fill")
+                    .font(.caption)
+                Text("Логи")
+                    .font(.caption)
+            }
+            .foregroundStyle(AppColors.textSecondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
         }
         .accessibilityLabel("Логи")
     }

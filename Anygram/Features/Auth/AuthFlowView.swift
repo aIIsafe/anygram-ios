@@ -8,33 +8,38 @@ struct AuthFlowView: View {
     }
 
     var body: some View {
-        ZStack {
-            AppColors.background.ignoresSafeArea()
+        NavigationStack {
+            ZStack {
+                AppColors.background.ignoresSafeArea()
 
-            Group {
-                switch viewModel.step {
-                case .phone, .loading:
-                    PhoneInputView(viewModel: viewModel)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .leading).combined(with: .opacity),
-                            removal: .move(edge: .leading).combined(with: .opacity)
-                        ))
-                case .code:
-                    CodeInputView(viewModel: viewModel)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .trailing).combined(with: .opacity),
-                            removal: .move(edge: .trailing).combined(with: .opacity)
-                        ))
-                case .twoFactor:
-                    TwoFactorView(viewModel: viewModel)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .trailing).combined(with: .opacity),
-                            removal: .move(edge: .trailing).combined(with: .opacity)
-                        ))
+                Group {
+                    switch viewModel.step {
+                    case .phone, .loading:
+                        PhoneInputView(viewModel: viewModel)
+                            .transition(.asymmetric(
+                                insertion: .move(edge: .leading).combined(with: .opacity),
+                                removal: .move(edge: .leading).combined(with: .opacity)
+                            ))
+                    case .code:
+                        CodeInputView(viewModel: viewModel)
+                            .transition(.asymmetric(
+                                insertion: .move(edge: .trailing).combined(with: .opacity),
+                                removal: .move(edge: .trailing).combined(with: .opacity)
+                            ))
+                    case .twoFactor:
+                        TwoFactorView(viewModel: viewModel)
+                            .transition(.asymmetric(
+                                insertion: .move(edge: .trailing).combined(with: .opacity),
+                                removal: .move(edge: .trailing).combined(with: .opacity)
+                            ))
+                    }
                 }
+                .animation(AppAnimation.standard, value: viewModel.step)
             }
-            .animation(AppAnimation.standard, value: viewModel.step)
+            .telegramBackground()
+            .navigationDestination(isPresented: $viewModel.showDebugLogs) {
+                DebugLogsView()
+            }
         }
-        .telegramBackground()
     }
 }

@@ -156,9 +156,6 @@ struct PhoneInputView: View {
             DebugLogsButton(showLogs: $viewModel.showDebugLogs)
                 .padding(AppSpacing.sm)
         }
-        .sheet(isPresented: $viewModel.showDebugLogs) {
-            DebugLogsView()
-        }
         .sheet(isPresented: $showCountryPicker) {
             CountryPickerView(selectedCountry: $viewModel.selectedCountry)
                 .glassSheetBackground()

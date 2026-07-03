@@ -28,7 +28,7 @@ enum TDLibProxyApplier {
             let start = Date()
 
             do {
-                _ = try await AsyncTimeout.withTimeout(
+                let proxyId = try await AsyncTimeout.withTimeout(
                     seconds: addProxyTimeout,
                     error: AuthError.networkUnavailable
                 ) {
@@ -46,7 +46,7 @@ enum TDLibProxyApplier {
                 lock.lock()
                 appliedProxyID = activeProxy.id
                 lock.unlock()
-                AppDebugLogger.shared.log("addProxy OK \(activeProxy.server):\(activeProxy.port) (\(ms)ms)", category: .PROXY)
+                AppDebugLogger.shared.log("addProxy OK proxy_id=\(proxyId) \(activeProxy.server):\(activeProxy.port) (\(ms)ms)", category: .PROXY)
                 return
             } catch {
                 let ms = Int(Date().timeIntervalSince(start) * 1000)

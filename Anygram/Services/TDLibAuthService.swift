@@ -176,6 +176,8 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
     private var parametersApplied = false
     private var cachedUser: User?
     private let stateLock = NSLock()
+    /// Serializes auth-state processing — prevents concurrent applyTdlibParameters races.
+    private let authStateQueue = DispatchQueue(label: "com.anygram.tdlib.auth-state")
 
     init() {
         NotificationCenter.default.addObserver(
@@ -207,7 +209,7 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         }
         AuthConnectionStatus.postProgress(step: 1, total: 7, label: "ensureClient + register handler")
         _ = TDLibSession.shared.ensureClient()
-        AuthConnectionStatus.postProgress(step: 2, total: 7, label: "awaitBootstrap (setLogStream + auth ready)")
+        AuthConnectionStatus.postProgress(step: 2, total: 7, label: "awaitBootstrap (setLogStream → setTdlibParameters → waitPhoneNumber)")
         try await TDLibSession.shared.awaitBootstrap(timeout: 8)
 
         // BetterTG: do NOT block up to 30s waiting for waitPhoneNumber here — sync current state once.
@@ -331,7 +333,8 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
 
     func fetchCurrentUser() async throws -> User? {
         if let cachedUser { return cachedUser }
-        guard let client = TDLibSession.shared.tdClient else { return nil }
+        guard TDLibAccessGate.shared.canCallAuthenticatedAPI,
+              let client = TDLibSession.shared.tdClient else { return nil }
         let tdUser = try await client.getMe()
         let user = Self.mapTDLibUser(tdUser)
         cachedUser = user
@@ -343,11 +346,10 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         if case .updateAuthorizationState(let authUpdate) = update {
             let stateName = Self.authorizationStateName(authUpdate.authorizationState)
             AppDebugLogger.shared.log("updateAuthorizationState: \(stateName)", category: .TDLIB)
-            // BetterTG: apply parameters immediately on waitTdlibParameters — do not queue behind addProxy.
-            if case .authorizationStateWaitTdlibParameters = authUpdate.authorizationState {
-                Task { await self.applyTdlibParameters() }
+            authStateQueue.async { [weak self] in
+                guard let self else { return }
+                Task { await self.processAuthorizationState(authUpdate.authorizationState) }
             }
-            Task { await self.processAuthorizationState(authUpdate.authorizationState) }
         }
     }
 
@@ -365,17 +367,18 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
 
         switch state {
         case .authorizationStateWaitTdlibParameters:
+            AppDebugLogger.shared.log("waitTdlibParameters → calling setTdlibParameters", category: .AUTH)
             await applyTdlibParameters()
         case .authorizationStateWaitPhoneNumber:
+            TDLibAccessGate.shared.markParametersApplied()
+            TDLibSession.shared.markBootstrapComplete()
             currentState = .waitPhoneNumber
             onStateChange?(currentState)
-            TDLibSession.shared.signalAuthBootstrapReady()
         case .authorizationStateWaitCode(let waitCode):
             let length = Self.codeLength(from: waitCode.codeInfo)
             let timeout = max(Int(waitCode.codeInfo.timeout), 0)
             currentState = .waitCode(codeLength: length, resendTimeout: timeout > 0 ? timeout : 60)
             onStateChange?(currentState)
-            TDLibSession.shared.signalAuthBootstrapReady()
         case .authorizationStateWaitPassword(let info):
             currentState = .waitPassword(hint: info.passwordHint)
             onStateChange?(currentState)
@@ -386,7 +389,6 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
             currentState = .ready
             onStateChange?(currentState)
             TDLibAccessGate.shared.markAuthorized()
-            TDLibSession.shared.signalAuthBootstrapReady()
             cachedUser = try? await fetchCurrentUser()
         case .authorizationStateClosed:
             currentState = .closed
@@ -411,9 +413,8 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         parametersApplied = true
         stateLock.unlock()
 
-        AppDebugLogger.shared.log("setTdlibParameters called", category: .TDLIB)
         AppDebugLogger.shared.log(
-            "setTdlibParameters apiId=\(TelegramAPIConfiguration.apiId) db=\(TelegramAPIConfiguration.databaseDirectoryPath) lang=\(TelegramAPIConfiguration.systemLanguageCode)",
+            "calling setTdlibParameters apiId=\(TelegramAPIConfiguration.apiId) db=\(TelegramAPIConfiguration.databaseDirectoryPath) lang=\(TelegramAPIConfiguration.systemLanguageCode)",
             category: .TDLIB
         )
         let start = Date()
@@ -439,6 +440,8 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
             let ms = Int(Date().timeIntervalSince(start) * 1000)
             AppDebugLogger.shared.log("setTdlibParameters OK (\(ms)ms)", category: .TDLIB)
             TDLibAccessGate.shared.markParametersApplied()
+            AppDebugLogger.shared.log("setTdlibParameters done → addProxy", category: .PROXY)
+            await TDLibProxyApplier.applyDefaultProxy(client: client)
         } catch {
             stateLock.lock()
             parametersApplied = false
