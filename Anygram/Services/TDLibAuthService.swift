@@ -257,7 +257,10 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
                     )
                     return
                 } catch {
-                    if Self.isApiIdInvalidError(error), attempt == 0 {
+                    let isInvalid = Self.rawTDLibErrorMessage(from: error)
+                        .localizedCaseInsensitiveContains("api_id_invalid")
+                        || ((error as? AuthError).map { Self.isApiIdInvalid($0) } ?? false)
+                    if isInvalid, attempt == 0 {
                         AppDebugLogger.shared.log("[AUTH] API_ID_INVALID — safe recovery, retry once", category: .AUTH)
                         try await self.recoverFromApiIdInvalid()
                         continue
@@ -675,16 +678,6 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
     private static func isApiIdInvalid(_ error: AuthError) -> Bool {
         if case .tdlibError(let message) = error {
             return message.lowercased().contains("api_id_invalid")
-        }
-        return false
-    }
-
-    private static func isApiIdInvalidError(_ error: any Error) -> Bool {
-        if rawTDLibErrorMessage(from: error).localizedCaseInsensitiveContains("api_id_invalid") {
-            return true
-        }
-        if let authErr = error as? AuthError {
-            return isApiIdInvalid(authErr)
         }
         return false
     }
