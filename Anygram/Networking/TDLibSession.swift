@@ -12,7 +12,7 @@ public final class TDLibSession: @unchecked Sendable {
     private var client: TDLibClient?
     private var updateHandlers: [(Data, TDLibClient) -> Void] = []
     private var bootstrapStarted = false
-    private var bootstrapTask: Task<Void, Error>?
+    private var bootstrapTask: Task<Void, any Error>?
 
     private init() {}
 

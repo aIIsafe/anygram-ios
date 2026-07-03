@@ -29,7 +29,7 @@ enum TDLibProxyApplier {
         lock.unlock()
 
         AuthConnectionStatus.post(.connectingProxy)
-        var lastError: Error?
+        var lastError: (any Error)?
 
         for attempt in 1...maxAttempts {
             do {
