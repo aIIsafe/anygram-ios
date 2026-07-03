@@ -20,20 +20,27 @@ public final class TDLibAuthService: AuthServiceProtocol, @unchecked Sendable {
     }
 
     public init() {
+        let pair = Self.makeBackendPair()
+        self.backend = pair.backend
+        self.stateSubject = pair.subject
+    }
+
+    private static func makeBackendPair() -> (
+        backend: AuthBackend,
+        subject: CurrentValueSubject<AuthAuthorizationState, Never>
+    ) {
         #if USE_SCAFFOLD_AUTH
-        let backend: AuthBackend = ScaffoldAuthBackend()
+        let impl = ScaffoldAuthBackend()
         #elseif targetEnvironment(simulator)
-        let backend: AuthBackend = ScaffoldAuthBackend()
+        let impl = ScaffoldAuthBackend()
         #elseif canImport(TDLibKit)
-        let backend: AuthBackend = TDLibAuthBackend()
+        let impl = TDLibAuthBackend()
         #else
-        let backend: AuthBackend = ScaffoldAuthBackend()
+        let impl = ScaffoldAuthBackend()
         #endif
-        self.backend = backend
-        self.stateSubject = CurrentValueSubject(backend.currentState)
-        backend.onStateChange = { [weak stateSubject] state in
-            stateSubject?.send(state)
-        }
+        let subject = CurrentValueSubject(impl.currentState)
+        impl.onStateChange = { subject.send($0) }
+        return (impl, subject)
     }
 
     public func initialize() async throws {
