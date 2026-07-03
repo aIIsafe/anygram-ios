@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 
 struct DeliveryStatusView: View {
     let state: MessageDeliveryState
@@ -200,8 +200,8 @@ struct ChatRowView: View {
                         .font(AppTypography.headline)
                         .foregroundStyle(AppColors.textPrimary)
                         .lineLimit(1)
-                    if chat.isVerified { VerifiedBadge }
-                    if chat.isPremium { PremiumBadge }
+                    if chat.isVerified { VerifiedBadge() }
+                    if chat.isPremium { PremiumBadge() }
                     Spacer()
                     Text(chat.lastMessageDate.chatListFormatted)
                         .font(AppTypography.caption)
@@ -263,8 +263,8 @@ struct ContactRowView: View {
                     Text(user.name)
                         .font(AppTypography.headline)
                         .foregroundStyle(AppColors.textPrimary)
-                    if user.isVerified { VerifiedBadge }
-                    if user.isPremium { PremiumBadge }
+                    if user.isVerified { VerifiedBadge() }
+                    if user.isPremium { PremiumBadge() }
                 }
                 Text(statusText)
                     .font(AppTypography.caption)
@@ -335,3 +335,4 @@ struct CallRowView: View {
         return Date.formatDuration(call.duration)
     }
 }
+

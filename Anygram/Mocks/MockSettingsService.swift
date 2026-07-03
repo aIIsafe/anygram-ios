@@ -1,10 +1,10 @@
-import Combine
+﻿import Combine
 import Foundation
 
 /// In-memory mock implementation of app settings.
 public final class MockSettingsService: SettingsServiceProtocol, @unchecked Sendable {
     private var settings: AppSettings
-    private let settingsSubject = CurrentValueSubject<AppSettings, Never>([])
+    private let settingsSubject: CurrentValueSubject<AppSettings, Never>
     private let devices: [Device]
     private let folders: [Folder]
     private let lock = NSLock()

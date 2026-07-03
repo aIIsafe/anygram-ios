@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 
 struct ProfileView: View {
     let userID: UUID
@@ -32,8 +32,8 @@ struct ProfileView: View {
                         HStack(spacing: 4) {
                             Text("@\(profile.user.username)")
                                 .foregroundStyle(AppColors.textSecondary)
-                            if profile.user.isVerified { VerifiedBadge }
-                            if profile.user.isPremium { PremiumBadge }
+                            if profile.user.isVerified { VerifiedBadge() }
+                            if profile.user.isPremium { PremiumBadge() }
                         }
                         .font(AppTypography.subheadline)
 
@@ -158,3 +158,4 @@ struct ProfileView: View {
         }
     }
 }
+
