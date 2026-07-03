@@ -176,54 +176,109 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
     private var parametersApplied = false
     private var cachedUser: User?
     private let stateLock = NSLock()
+    /// Serializes auth-state processing — prevents concurrent applyTdlibParameters races.
+    private let authStateQueue = DispatchQueue(label: "com.anygram.tdlib.auth-state")
+
+    init() {
+        NotificationCenter.default.addObserver(
+            forName: TDLibSession.sessionResetNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            self?.stateLock.lock()
+            self?.parametersApplied = false
+            self?.cachedUser = nil
+            self?.currentState = .unknown
+            self?.stateLock.unlock()
+            AppDebugLogger.shared.log("session reset: cleared parametersApplied", category: .AUTH)
+        }
+    }
 
     func initialize() async throws {
+        AppDebugLogger.shared.log("initialize start", category: .AUTH)
         guard TelegramAPIConfiguration.isConfigured else {
+            AppDebugLogger.shared.log("initialize: not configured", category: .ERROR)
             throw AuthError.notConfigured
         }
+        AuthConnectionStatus.postProgress(step: 1, total: 7, label: "ensureClient + register handler")
         _ = TDLibSession.shared.ensureClient { [weak self] data, client in
             self?.handleUpdate(data: data, client: client)
         }
-        try await TDLibSession.shared.awaitBootstrap(timeout: 10)
+        AuthConnectionStatus.postProgress(step: 2, total: 7, label: "awaitBootstrap (setLogStream + proxy)")
+        try await TDLibSession.shared.awaitBootstrap(timeout: 8)
 
-        AuthConnectionStatus.post(.waitingTdlib)
-        try await waitForPhoneNumberState(timeout: 30)
-        AuthConnectionStatus.post(.idle)
+        // BetterTG: do NOT block up to 30s waiting for waitPhoneNumber here — sync current state once.
+        AuthConnectionStatus.postProgress(step: 3, total: 7, label: "getAuthorizationState (sync)")
+        if let client = TDLibSession.shared.tdClient {
+            if let state = try? await getAuthorizationState(client: client, label: "initialize") {
+                await processAuthorizationState(state)
+            }
+        }
+        AppDebugLogger.shared.log("initialize done, currentState=\(String(describing: currentState))", category: .AUTH)
     }
 
     func setPhoneNumber(_ phoneNumber: String) async throws {
-        guard let client = TDLibSession.shared.tdClient else { throw AuthError.notConfigured }
+        let masked = Self.maskPhone(phoneNumber)
+        AppDebugLogger.shared.log("setPhoneNumber start phone=\(masked)", category: .AUTH)
+
+        try await AsyncTimeout.withTimeout(seconds: 15, error: AuthError.tdlibError("TIMEOUT at step submitPhoneNumber (15s)")) {
+            try await self.submitPhoneNumberFlow(phoneNumber: phoneNumber, masked: masked)
+        }
+    }
+
+    private func submitPhoneNumberFlow(phoneNumber: String, masked: String) async throws {
+        guard let client = TDLibSession.shared.tdClient else {
+            AppDebugLogger.shared.log("setPhoneNumber: no tdClient", category: .ERROR)
+            throw AuthError.notConfigured
+        }
         let normalized = Self.normalizePhoneNumber(phoneNumber)
         let digits = normalized.filter(\.isNumber)
         guard digits.count >= 10 else { throw AuthError.invalidPhoneNumber }
 
-        // BetterTG: no addProxy or proxy ping during login — just check auth state and send phone.
-        let authState = try await client.getAuthorizationState()
+        AuthConnectionStatus.postProgress(step: 4, total: 7, label: "getAuthorizationState before phone")
+        let authState = try await getAuthorizationState(client: client, label: "before phone")
+
         switch authState {
         case .authorizationStateWaitPhoneNumber:
-            break
+            AppDebugLogger.shared.log("auth state OK: waitPhoneNumber", category: .AUTH)
         case .authorizationStateWaitTdlibParameters:
+            AppDebugLogger.shared.log("auth state waitTdlibParameters — applying params", category: .AUTH)
             AuthConnectionStatus.post(.waitingTdlib)
-            try await waitForPhoneNumberState(timeout: 15)
+            AuthConnectionStatus.postProgress(step: 5, total: 7, label: "setTdlibParameters")
+            await applyTdlibParameters()
+            try await waitForPhoneNumberState(timeout: 12)
         default:
-            authLogger.error("Unexpected auth state before phone submit: \(String(describing: authState), privacy: .public)")
+            let name = Self.authorizationStateName(authState)
+            AppDebugLogger.shared.log("unexpected auth state before phone: \(name)", category: .ERROR)
             throw AuthError.stillStarting
         }
 
         AuthConnectionStatus.post(.sendingPhone)
-        authLogger.info("setAuthenticationPhoneNumber \(normalized, privacy: .private)")
+        AuthConnectionStatus.postProgress(step: 6, total: 7, label: "setAuthenticationPhoneNumber")
+        AppDebugLogger.shared.log("setAuthenticationPhoneNumber \(masked)", category: .AUTH)
+        let sendStart = Date()
         do {
-            try await AsyncTimeout.withTimeout(seconds: 45, error: AuthError.networkUnavailable) {
+            _ = try await AsyncTimeout.withTimeout(seconds: 12, error: AuthError.networkUnavailable) {
                 _ = try await client.setAuthenticationPhoneNumber(
                     phoneNumber: normalized,
                     settings: nil
                 )
             }
+            let ms = Int(Date().timeIntervalSince(sendStart) * 1000)
+            AppDebugLogger.shared.log("setAuthenticationPhoneNumber OK (\(ms)ms)", category: .AUTH)
         } catch let error as AuthError {
+            AppDebugLogger.shared.log("setAuthenticationPhoneNumber AuthError: \(error.localizedDescription ?? "?")", category: .ERROR)
+            if case .networkUnavailable = error {
+                AppDebugLogger.shared.log("resetClient after phone send timeout", category: .AUTH)
+                TDLibSession.shared.resetClient()
+                parametersApplied = false
+            }
             throw error
         } catch {
+            AppDebugLogger.shared.log("setAuthenticationPhoneNumber error: \(error.localizedDescription)", category: .ERROR)
             throw mapTDLibError(error)
         }
+        AuthConnectionStatus.postProgress(step: 7, total: 7, label: "done — wait for waitCode update")
         AuthConnectionStatus.post(.idle)
     }
 
@@ -231,8 +286,11 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         guard let client = TDLibSession.shared.tdClient else { throw AuthError.notConfigured }
         let digits = code.filter(\.isNumber)
         guard !digits.isEmpty else { throw AuthError.invalidCode }
+        AppDebugLogger.shared.log("checkAuthenticationCode len=\(digits.count)", category: .AUTH)
         do {
-            _ = try await client.checkAuthenticationCode(code: code)
+            _ = try await AsyncTimeout.withTimeout(seconds: 15, error: AuthError.networkUnavailable) {
+                _ = try await client.checkAuthenticationCode(code: code)
+            }
         } catch {
             throw mapTDLibError(error, invalidCode: true, invalidPassword: false)
         }
@@ -241,8 +299,11 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
     func checkAuthenticationPassword(_ password: String) async throws {
         guard let client = TDLibSession.shared.tdClient else { throw AuthError.notConfigured }
         guard !password.isEmpty else { throw AuthError.invalidPassword }
+        AppDebugLogger.shared.log("checkAuthenticationPassword", category: .AUTH)
         do {
-            _ = try await client.checkAuthenticationPassword(password: password)
+            _ = try await AsyncTimeout.withTimeout(seconds: 15, error: AuthError.networkUnavailable) {
+                _ = try await client.checkAuthenticationPassword(password: password)
+            }
         } catch {
             throw mapTDLibError(error, invalidCode: false, invalidPassword: true)
         }
@@ -250,7 +311,10 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
 
     func resendAuthenticationCode() async throws {
         guard let client = TDLibSession.shared.tdClient else { throw AuthError.notConfigured }
-        _ = try await client.resendAuthenticationCode(reason: nil)
+        AppDebugLogger.shared.log("resendAuthenticationCode", category: .AUTH)
+        _ = try await AsyncTimeout.withTimeout(seconds: 15, error: AuthError.networkUnavailable) {
+            _ = try await client.resendAuthenticationCode(reason: nil)
+        }
     }
 
     func logout() async throws {
@@ -274,12 +338,28 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
     private func handleUpdate(data: Data, client: TDLibClient) {
         guard let update = try? client.decoder.decode(Update.self, from: data) else { return }
         if case .updateAuthorizationState(let authUpdate) = update {
-            Task { await processAuthorizationState(authUpdate.authorizationState) }
+            let stateName = Self.authorizationStateName(authUpdate.authorizationState)
+            AppDebugLogger.shared.log("updateAuthorizationState: \(stateName)", category: .TDLIB)
+            authStateQueue.async { [weak self] in
+                Task {
+                    await self?.processAuthorizationState(authUpdate.authorizationState)
+                }
+            }
+        }
+    }
+
+    private func getAuthorizationState(client: TDLibClient, label: String) async throws -> AuthorizationState {
+        AppDebugLogger.shared.log("getAuthorizationState (\(label))", category: .TDLIB)
+        return try await AsyncTimeout.withTimeout(seconds: 5, error: AuthError.stillStarting) {
+            try await client.getAuthorizationState()
         }
     }
 
     private func processAuthorizationState(_ state: AuthorizationState) async {
-        authLogger.debug("authorization state: \(String(describing: state), privacy: .public)")
+        let name = Self.authorizationStateName(state)
+        authLogger.debug("authorization state: \(name, privacy: .public)")
+        AppDebugLogger.shared.log("processAuthorizationState: \(name)", category: .AUTH)
+
         switch state {
         case .authorizationStateWaitTdlibParameters:
             await applyTdlibParameters()
@@ -315,35 +395,57 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
     }
 
     private func applyTdlibParameters() async {
-        guard let client = TDLibSession.shared.tdClient, !parametersApplied else { return }
+        stateLock.lock()
+        let alreadyApplied = parametersApplied
+        stateLock.unlock()
+        guard let client = TDLibSession.shared.tdClient, !alreadyApplied else { return }
+
+        stateLock.lock()
+        parametersApplied = true
+        stateLock.unlock()
+
+        AppDebugLogger.shared.log(
+            "setTdlibParameters apiId=\(TelegramAPIConfiguration.apiId) db=\(TelegramAPIConfiguration.databaseDirectoryPath)",
+            category: .TDLIB
+        )
+        let start = Date()
         do {
-            _ = try await client.setTdlibParameters(
-                apiHash: TelegramAPIConfiguration.apiHash,
-                apiId: Int(TelegramAPIConfiguration.apiId),
-                applicationVersion: TelegramAPIConfiguration.applicationVersion,
-                databaseDirectory: TelegramAPIConfiguration.databaseDirectoryPath,
-                databaseEncryptionKey: Data(),
-                deviceModel: TelegramAPIConfiguration.deviceModel,
-                filesDirectory: TelegramAPIConfiguration.filesDirectoryPath,
-                systemLanguageCode: TelegramAPIConfiguration.systemLanguageCode,
-                systemVersion: ProcessInfo.processInfo.operatingSystemVersionString,
-                useChatInfoDatabase: true,
-                useFileDatabase: true,
-                useMessageDatabase: true,
-                useSecretChats: true,
-                useTestDc: false
-            )
-            parametersApplied = true
+            _ = try await AsyncTimeout.withTimeout(seconds: 10, error: AuthError.stillStarting) {
+                _ = try await client.setTdlibParameters(
+                    apiHash: TelegramAPIConfiguration.apiHash,
+                    apiId: Int(TelegramAPIConfiguration.apiId),
+                    applicationVersion: TelegramAPIConfiguration.applicationVersion,
+                    databaseDirectory: TelegramAPIConfiguration.databaseDirectoryPath,
+                    databaseEncryptionKey: Data(),
+                    deviceModel: TelegramAPIConfiguration.deviceModel,
+                    filesDirectory: TelegramAPIConfiguration.filesDirectoryPath,
+                    systemLanguageCode: TelegramAPIConfiguration.systemLanguageCode,
+                    systemVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+                    useChatInfoDatabase: true,
+                    useFileDatabase: true,
+                    useMessageDatabase: true,
+                    useSecretChats: true,
+                    useTestDc: false
+                )
+            }
+            let ms = Int(Date().timeIntervalSince(start) * 1000)
+            AppDebugLogger.shared.log("setTdlibParameters OK (\(ms)ms)", category: .TDLIB)
         } catch {
+            stateLock.lock()
+            parametersApplied = false
+            stateLock.unlock()
+            AppDebugLogger.shared.log("setTdlibParameters FAILED: \(error.localizedDescription)", category: .ERROR)
             authLogger.error("setTdlibParameters failed: \(error.localizedDescription, privacy: .public)")
             currentState = .closed
             onStateChange?(currentState)
         }
     }
 
+    /// Poll getAuthorizationState until waitPhoneNumber — capped timeout (was 30s in initialize, caused hang).
     private func waitForPhoneNumberState(timeout: TimeInterval) async throws {
         if case .waitPhoneNumber = currentState { return }
 
+        AuthConnectionStatus.post(.waitingTdlib)
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if case .waitPhoneNumber = currentState { return }
@@ -352,14 +454,13 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
             }
 
             if let client = TDLibSession.shared.tdClient,
-               let state = try? await client.getAuthorizationState() {
+               let state = try? await getAuthorizationState(client: client, label: "waitForPhone") {
                 await processAuthorizationState(state)
                 if case .authorizationStateWaitPhoneNumber = state { return }
                 if case .authorizationStateClosed = state {
                     throw AuthError.tdlibError(L10n.authAuthorizationFailed)
                 }
                 if case .authorizationStateWaitTdlibParameters = state {
-                    AuthConnectionStatus.post(.waitingTdlib)
                     await applyTdlibParameters()
                 }
             }
@@ -367,10 +468,38 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         }
 
         if let client = TDLibSession.shared.tdClient,
-           let state = try? await client.getAuthorizationState() {
-            authLogger.error("Timed out waiting for phone state; TDLib state: \(String(describing: state), privacy: .public)")
+           let state = try? await getAuthorizationState(client: client, label: "waitForPhone timeout") {
+            let name = Self.authorizationStateName(state)
+            AppDebugLogger.shared.log("TIMEOUT at waitForPhoneNumberState; TDLib=\(name)", category: .ERROR)
+            authLogger.error("Timed out waiting for phone state; TDLib state: \(name, privacy: .public)")
         }
+        TDLibSession.shared.resetClient()
+        parametersApplied = false
         throw AuthError.stillStarting
+    }
+
+    private static func authorizationStateName(_ state: AuthorizationState) -> String {
+        switch state {
+        case .authorizationStateWaitTdlibParameters: return "authorizationStateWaitTdlibParameters"
+        case .authorizationStateWaitPhoneNumber: return "authorizationStateWaitPhoneNumber"
+        case .authorizationStateWaitCode: return "authorizationStateWaitCode"
+        case .authorizationStateWaitPassword: return "authorizationStateWaitPassword"
+        case .authorizationStateWaitRegistration: return "authorizationStateWaitRegistration"
+        case .authorizationStateReady: return "authorizationStateReady"
+        case .authorizationStateClosed: return "authorizationStateClosed"
+        case .authorizationStateLoggingOut: return "authorizationStateLoggingOut"
+        case .authorizationStateClosing: return "authorizationStateClosing"
+        case .authorizationStateWaitEmailAddress: return "authorizationStateWaitEmailAddress"
+        case .authorizationStateWaitEmailCode: return "authorizationStateWaitEmailCode"
+        case .authorizationStateWaitOtherDeviceConfirmation: return "authorizationStateWaitOtherDeviceConfirmation"
+        case .authorizationStateWaitPremiumPurchase: return "authorizationStateWaitPremiumPurchase"
+        }
+    }
+
+    private static func maskPhone(_ phone: String) -> String {
+        let digits = phone.filter(\.isNumber)
+        guard digits.count > 4 else { return "+***" }
+        return "+\(digits.prefix(2))***\(digits.suffix(2))"
     }
 
     private static func codeLength(from codeInfo: AuthenticationCodeInfo) -> Int {

@@ -1,10 +1,7 @@
 import Foundation
-import os
 
 #if canImport(TDLibKit)
 import TDLibKit
-
-private let proxyLogger = Logger(subsystem: "com.anygram.app", category: "TDLibProxy")
 
 /// Applies the built-in MTProto proxy to TDLib, matching BetterTG `TelegramProxy.swift`.
 enum TDLibProxyApplier {
@@ -15,12 +12,20 @@ enum TDLibProxyApplier {
     /// BetterTG: call addProxy once at client startup — no ping wait, no throw on failure.
     static func applyDefaultProxy(client: TDLibClient, proxy: Anygram.Proxy? = nil) async {
         let candidates = await proxyCandidates(preferred: proxy)
+        AppDebugLogger.shared.log("addProxy candidates: \(candidates.count)", category: .PROXY)
 
         for activeProxy in candidates {
             if isAlreadyApplied(activeProxy) {
-                proxyLogger.debug("Proxy already applied: \(activeProxy.server, privacy: .public):\(activeProxy.port)")
+                AppDebugLogger.shared.log("Proxy already applied: \(activeProxy.server):\(activeProxy.port)", category: .PROXY)
                 return
             }
+
+            let maskedSecret = activeProxy.secret.prefix(4) + "…"
+            AppDebugLogger.shared.log(
+                "addProxy start server=\(activeProxy.server) port=\(activeProxy.port) secret=\(maskedSecret)",
+                category: .PROXY
+            )
+            let start = Date()
 
             do {
                 _ = try await AsyncTimeout.withTimeout(
@@ -36,22 +41,29 @@ enum TDLibProxyApplier {
                         )
                     )
                 }
+                let ms = Int(Date().timeIntervalSince(start) * 1000)
                 await TDLibProxyBridge.shared.configure(proxy: activeProxy)
                 lock.lock()
                 appliedProxyID = activeProxy.id
                 lock.unlock()
-                proxyLogger.info("MTProto proxy enabled: \(activeProxy.server, privacy: .public):\(activeProxy.port)")
+                AppDebugLogger.shared.log("addProxy OK \(activeProxy.server):\(activeProxy.port) (\(ms)ms)", category: .PROXY)
                 return
             } catch {
-                proxyLogger.error("addProxy failed for \(activeProxy.server, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                let ms = Int(Date().timeIntervalSince(start) * 1000)
+                AppDebugLogger.shared.log(
+                    "addProxy FAILED \(activeProxy.server): \(error.localizedDescription) (\(ms)ms)",
+                    category: .ERROR
+                )
             }
         }
+        AppDebugLogger.shared.log("addProxy: all candidates failed (non-fatal, BetterTG-style)", category: .PROXY)
     }
 
     static func resetAppliedProxy() {
         lock.lock()
         appliedProxyID = nil
         lock.unlock()
+        AppDebugLogger.shared.log("resetAppliedProxy", category: .PROXY)
     }
 
     private static func isAlreadyApplied(_ proxy: Anygram.Proxy) -> Bool {

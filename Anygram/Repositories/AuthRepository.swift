@@ -28,17 +28,29 @@ public final class AuthRepository: @unchecked Sendable {
     }
 
     public func bootstrap() async throws {
+        AppDebugLogger.shared.log("AuthRepository.bootstrap", category: .AUTH)
         try await networkService.bootstrapForLogin()
     }
 
     public func submitPhoneNumber(_ phoneNumber: String) async throws {
+        AppDebugLogger.shared.log("AuthRepository.submitPhoneNumber", category: .AUTH)
         do {
             try await networkService.bootstrapForLogin()
             try await authService.setPhoneNumber(phoneNumber)
         } catch {
-            networkService.resetLoginBootstrap()
+            AppDebugLogger.shared.log("AuthRepository.submitPhoneNumber failed: \(error.localizedDescription)", category: .ERROR)
+            if shouldResetSession(after: error) {
+                networkService.resetLoginBootstrap()
+            }
             throw error
         }
+    }
+
+    private func shouldResetSession(after error: Error) -> Bool {
+        if case AuthError.stillStarting = error { return true }
+        if case AuthError.networkUnavailable = error { return true }
+        if case AuthError.tdlibError(let message) = error, message.contains("TIMEOUT") { return true }
+        return false
     }
 
     public func submitCode(_ code: String) async throws {

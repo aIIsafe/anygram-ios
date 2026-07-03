@@ -14,33 +14,43 @@ public final class TelegramNetworkService: @unchecked Sendable {
     }
 
     public func bootstrapForLogin() async throws {
+        AppDebugLogger.shared.log("bootstrapForLogin start", category: .NETWORK)
         // TDLib handles proxy itself — only load config for TDLibProxyBridge, skip mock connect loop.
         let proxies = try await proxyService.fetchProxies()
+        AppDebugLogger.shared.log("fetchProxies: \(proxies.count) proxy(ies)", category: .NETWORK)
         let settings = PreferencesStorage.shared.loadSettings()
         let active = proxies.first(where: { $0.id == settings?.activeProxyID && $0.isEnabled })
             ?? proxies.first(where: \.isEnabled)
             ?? proxies.first
             ?? Proxy.builtInDefault
         await TDLibProxyBridge.shared.configure(proxy: active)
+        AppDebugLogger.shared.log("active proxy: \(active.server):\(active.port)", category: .NETWORK)
 
         lock.lock()
         let alreadyPrepared = loginSessionPrepared
         lock.unlock()
-        guard !alreadyPrepared else { return }
+        guard !alreadyPrepared else {
+            AppDebugLogger.shared.log("bootstrapForLogin: session already prepared, skip initialize", category: .NETWORK)
+            return
+        }
 
+        AppDebugLogger.shared.log("bootstrapForLogin: authService.initialize()", category: .AUTH)
         try await authService.initialize()
 
         lock.lock()
         loginSessionPrepared = true
         lock.unlock()
+        AppDebugLogger.shared.log("bootstrapForLogin complete", category: .NETWORK)
     }
 
     public func resetLoginBootstrap() {
         lock.lock()
         loginSessionPrepared = false
         lock.unlock()
+        AppDebugLogger.shared.log("resetLoginBootstrap + resetClient", category: .NETWORK)
         #if canImport(TDLibKit)
         TDLibProxyApplier.resetAppliedProxy()
+        TDLibSession.shared.resetClient()
         #endif
     }
 

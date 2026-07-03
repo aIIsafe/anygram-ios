@@ -21,9 +21,16 @@ final class AuthViewModel: ObservableObject {
     @Published var resendSeconds = 0
     @Published var passwordHint: String?
     @Published var codeLength = 5
+    @Published var flowProgressText: String?
+    @Published var loadingElapsedSeconds = 0
+    @Published var recentLogLines: [String] = []
+    @Published var showOpenLogsAfterError = false
+    @Published var showDebugLogs = false
 
     private let authRepository: AuthRepository
     private var resendTimer: Timer?
+    private var loadingTimer: Timer?
+    private var logRefreshTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
 
     init(authRepository: AuthRepository) {
@@ -40,7 +47,24 @@ final class AuthViewModel: ObservableObject {
             .compactMap { $0.object as? AuthConnectionPhase }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] phase in
-                self?.connectionPhase = phase
+                guard let self else { return }
+                AppDebugLogger.shared.log("connectionPhase → \(String(describing: phase))", category: .UI)
+                self.connectionPhase = phase
+            }
+            .store(in: &cancellables)
+
+        AuthConnectionStatus.progressPublisher()
+            .compactMap { $0.object as? AuthFlowProgress }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] progress in
+                self?.flowProgressText = progress.displayText
+            }
+            .store(in: &cancellables)
+
+        AppDebugLogger.shared.$revision
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.recentLogLines = AppDebugLogger.shared.recentLines(3)
             }
             .store(in: &cancellables)
     }
@@ -83,23 +107,37 @@ final class AuthViewModel: ObservableObject {
             errorMessage = L10n.authInvalidPhone
             return
         }
+        AppDebugLogger.shared.log("submitPhone tapped phone=\(fullPhoneNumber.filter(\.isNumber).suffix(4))…", category: .UI)
         isLoading = true
         errorMessage = nil
-        let phaseWatchdog = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 10_000_000_000)
-            if self.isLoading {
-                self.connectionPhase = .idle
-            }
-        }
+        showOpenLogsAfterError = false
+        flowProgressText = "Шаг 0/7: начало"
+        startLoadingTimers()
+
         defer {
-            phaseWatchdog.cancel()
+            stopLoadingTimers()
             isLoading = false
             connectionPhase = .idle
+            flowProgressText = nil
+            loadingElapsedSeconds = 0
+            AppDebugLogger.shared.log("submitPhone end isLoading=false", category: .UI)
         }
+
+        let phone = fullPhoneNumber
+        let repository = authRepository
         do {
-            try await authRepository.submitPhoneNumber(fullPhoneNumber)
+            // Don't block MainActor waiting for TDLib — run auth on background executor.
+            try await Task.detached(priority: .userInitiated) {
+                AppDebugLogger.shared.log("submitPhone Task.detached start", category: .AUTH)
+                try await repository.submitPhoneNumber(phone)
+                AppDebugLogger.shared.log("submitPhone Task.detached success", category: .AUTH)
+            }.value
         } catch {
+            AppDebugLogger.shared.log("submitPhone error: \(error.localizedDescription)", category: .ERROR)
             errorMessage = error.localizedDescription
+            if error.localizedDescription.contains("TIMEOUT") || (error as? AuthError) == .stillStarting {
+                showOpenLogsAfterError = true
+            }
         }
     }
 
@@ -111,9 +149,16 @@ final class AuthViewModel: ObservableObject {
         }
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
+        startLoadingTimers()
+        defer {
+            stopLoadingTimers()
+            isLoading = false
+        }
+        let repository = authRepository
         do {
-            try await authRepository.submitCode(code)
+            try await Task.detached(priority: .userInitiated) {
+                try await repository.submitCode(code)
+            }.value
         } catch {
             errorMessage = error.localizedDescription
             codeDigits = Array(repeating: "", count: codeLength)
@@ -128,8 +173,11 @@ final class AuthViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
+        let repository = authRepository
         do {
-            try await authRepository.submitPassword(password)
+            try await Task.detached(priority: .userInitiated) {
+                try await repository.submitPassword(password)
+            }.value
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -175,6 +223,22 @@ final class AuthViewModel: ObservableObject {
         errorMessage = nil
         resendTimer?.invalidate()
         resendSeconds = 0
+    }
+
+    private func startLoadingTimers() {
+        loadingElapsedSeconds = 0
+        loadingTimer?.invalidate()
+        loadingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.loadingElapsedSeconds += 1
+            }
+        }
+        recentLogLines = AppDebugLogger.shared.recentLines(3)
+    }
+
+    private func stopLoadingTimers() {
+        loadingTimer?.invalidate()
+        loadingTimer = nil
     }
 
     private func syncStepFromState(_ state: AuthAuthorizationState) {

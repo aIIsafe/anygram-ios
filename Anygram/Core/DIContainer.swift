@@ -103,6 +103,7 @@ public final class DIContainer: ObservableObject {
     }
 
     public func bootstrap() async {
+        AppDebugLogger.shared.log("DIContainer.bootstrap (proxy init)", category: .UI)
         await proxyRepository.initializeOnFirstLaunch()
     }
 

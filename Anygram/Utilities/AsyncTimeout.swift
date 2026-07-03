@@ -13,6 +13,7 @@ enum AsyncTimeout {
             }
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                AppDebugLogger.shared.log("TIMEOUT fired after \(seconds)s", category: .ERROR)
                 throw timeoutError
             }
             guard let result = try await group.next() else {
@@ -35,6 +36,7 @@ enum AsyncTimeout {
             }
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                AppDebugLogger.shared.log("TIMEOUT fired after \(seconds)s", category: .ERROR)
                 throw timeoutError
             }
             guard let result = try await group.next() else {
