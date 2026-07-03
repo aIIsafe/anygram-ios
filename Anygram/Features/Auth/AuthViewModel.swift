@@ -174,9 +174,10 @@ final class AuthViewModel: ObservableObject {
         errorMessage = nil
         defer { isLoading = false }
         let repository = authRepository
+        let passwordToSubmit = password
         do {
             try await Task.detached(priority: .userInitiated) {
-                try await repository.submitPassword(password)
+                try await repository.submitPassword(passwordToSubmit)
             }.value
         } catch {
             errorMessage = error.localizedDescription
