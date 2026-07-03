@@ -59,9 +59,10 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
             onlyLocal: false
         )
 
-        let mapped = await mapMessages(history.messages, chatID: chatID, client: client)
+        let rawMessages = history.messages ?? []
+        let mapped = await mapMessages(rawMessages, chatID: chatID, client: client)
         lock.lock()
-        if let oldest = history.messages.last?.id, oldest > 0 {
+        if let oldest = rawMessages.last?.id, oldest > 0 {
             loadedHistoryOffsets[chatID] = oldest
         }
         var existing = messagesByChat[chatID, default: []]
@@ -147,8 +148,25 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
             throw AuthError.notConfigured
         }
         let isMuted = tdChat.notificationSettings.muteFor > 0
-        var settings = tdChat.notificationSettings
-        settings.muteFor = isMuted ? 0 : 365 * 24 * 60 * 60
+        let old = tdChat.notificationSettings
+        let settings = ChatNotificationSettings(
+            disableMentionNotifications: old.disableMentionNotifications,
+            disablePinnedMessageNotifications: old.disablePinnedMessageNotifications,
+            muteFor: isMuted ? 0 : 365 * 24 * 60 * 60,
+            muteStories: old.muteStories,
+            showPreview: old.showPreview,
+            showStoryPoster: old.showStoryPoster,
+            soundId: old.soundId,
+            storySoundId: old.storySoundId,
+            useDefaultDisableMentionNotifications: old.useDefaultDisableMentionNotifications,
+            useDefaultDisablePinnedMessageNotifications: old.useDefaultDisablePinnedMessageNotifications,
+            useDefaultMuteFor: false,
+            useDefaultMuteStories: old.useDefaultMuteStories,
+            useDefaultShowPreview: old.useDefaultShowPreview,
+            useDefaultShowStoryPoster: old.useDefaultShowStoryPoster,
+            useDefaultSound: old.useDefaultSound,
+            useDefaultStorySound: old.useDefaultStorySound
+        )
         _ = try await client.setChatNotificationSettings(chatId: chatTelegramId, notificationSettings: settings)
         await reloadAllChats()
         lock.lock()
@@ -165,11 +183,8 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
         lock.lock()
         let isArchived = chats.first(where: { $0.id == chatID })?.isArchived ?? false
         lock.unlock()
-        if isArchived {
-            _ = try await client.removeChatFromList(chatId: chatTelegramId, chatList: .chatListArchive)
-        } else {
-            _ = try await client.addChatToList(chatId: chatTelegramId, chatList: .chatListArchive)
-        }
+        let targetList: ChatList = isArchived ? .chatListMain : .chatListArchive
+        _ = try await client.addChatToList(chatId: chatTelegramId, chatList: targetList)
         await reloadAllChats()
         lock.lock()
         defer { lock.unlock() }
@@ -270,10 +285,10 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
         switch type {
         case .chatTypePrivate:
             return .privateChat
-        case .chatTypeBasicGroup, .chatTypeSupergroup:
+        case .chatTypeBasicGroup:
             return .group
-        case .chatTypeChannel:
-            return .channel
+        case .chatTypeSupergroup(let info):
+            return info.isChannel ? .channel : .group
         default:
             return .privateChat
         }

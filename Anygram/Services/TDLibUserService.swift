@@ -101,7 +101,7 @@ public final class TDLibUserService: UserServiceProtocol, @unchecked Sendable {
             status: "",
             isOnline: isOnline,
             isPremium: tdUser.isPremium,
-            isVerified: tdUser.isVerified
+            isVerified: tdUser.verificationStatus?.isVerified ?? false
         )
     }
 }

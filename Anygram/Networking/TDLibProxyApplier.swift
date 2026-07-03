@@ -8,21 +8,26 @@ enum TDLibProxyApplier {
     private static let retryDelayNanoseconds: UInt64 = 3_000_000_000
 
     static func applyForcedProxy(client: TDLibClient, proxy: Anygram.Proxy? = nil) async {
-        let activeProxy = proxy ?? await TDLibProxyBridge.shared.activeProxy ?? Anygram.Proxy.builtInDefault
+        let activeProxy: Anygram.Proxy
+        if let proxy {
+            activeProxy = proxy
+        } else if let bridged = await TDLibProxyBridge.shared.activeProxy {
+            activeProxy = bridged
+        } else {
+            activeProxy = Anygram.Proxy.builtInDefault
+        }
         var attempt = 0
 
         while attempt < 10 {
             attempt += 1
             do {
-                let secretData = Data(hexString: activeProxy.secret)
-                    ?? Data(base64Encoded: activeProxy.secret)
-                    ?? Data(activeProxy.secret.utf8)
-
                 _ = try await client.addProxy(
-                    server: activeProxy.server,
-                    port: activeProxy.port,
                     enable: true,
-                    type: .proxyTypeMtproto(secret: secretData)
+                    port: activeProxy.port,
+                    server: activeProxy.server,
+                    type: .proxyTypeMtproto(
+                        ProxyTypeMtproto(secret: activeProxy.secret)
+                    )
                 )
                 await TDLibProxyBridge.shared.configure(proxy: activeProxy)
                 return

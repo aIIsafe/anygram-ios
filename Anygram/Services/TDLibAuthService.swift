@@ -231,7 +231,7 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
 
     func resendAuthenticationCode() async throws {
         guard let client = TDLibSession.shared.tdClient else { throw AuthError.notConfigured }
-        _ = try await client.resendAuthenticationCode()
+        _ = try await client.resendAuthenticationCode(reason: nil)
     }
 
     func logout() async throws {
@@ -267,11 +267,8 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         case .authorizationStateWaitPhoneNumber:
             currentState = .waitPhoneNumber
             onStateChange?(currentState)
-        case .authorizationStateWaitCode(let info):
-            currentState = .waitCode(
-                codeLength: max(Int(info.codeInfo.type.length), 5),
-                resendTimeout: max(Int(info.codeInfo.timeout), 0)
-            )
+        case .authorizationStateWaitCode:
+            currentState = .waitCode(codeLength: 5, resendTimeout: 60)
             onStateChange?(currentState)
         case .authorizationStateWaitPassword(let info):
             currentState = .waitPassword(hint: info.passwordHint)
@@ -299,22 +296,22 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
     private func applyTdlibParameters() async {
         guard let client = TDLibSession.shared.tdClient, !parametersApplied else { return }
         do {
-            let params = TdlibParameters(
-                apiId: TelegramAPIConfiguration.apiId,
+            _ = try await client.setTdlibParameters(
                 apiHash: TelegramAPIConfiguration.apiHash,
-                systemLanguageCode: TelegramAPIConfiguration.systemLanguageCode,
-                deviceModel: TelegramAPIConfiguration.deviceModel,
-                systemVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+                apiId: TelegramAPIConfiguration.apiId,
                 applicationVersion: TelegramAPIConfiguration.applicationVersion,
+                databaseDirectory: TelegramAPIConfiguration.databaseDirectoryPath,
+                databaseEncryptionKey: Data(),
+                deviceModel: TelegramAPIConfiguration.deviceModel,
+                filesDirectory: TelegramAPIConfiguration.filesDirectoryPath,
+                systemLanguageCode: TelegramAPIConfiguration.systemLanguageCode,
+                systemVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+                useChatInfoDatabase: true,
+                useFileDatabase: true,
                 useMessageDatabase: true,
                 useSecretChats: true,
-                databaseDirectory: TelegramAPIConfiguration.databaseDirectoryPath,
-                filesDirectory: TelegramAPIConfiguration.filesDirectoryPath,
-                useFileDatabase: true,
-                useChatInfoDatabase: true,
                 useTestDc: false
             )
-            _ = try await client.setTdlibParameters(parameters: params)
             parametersApplied = true
         } catch {
             authLogger.error("setTdlibParameters failed: \(error.localizedDescription, privacy: .public)")
@@ -364,7 +361,7 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
     }
 
     private func mapTDLibError(
-        _ error: Error,
+        _ error: Swift.Error,
         invalidCode: Bool = false,
         invalidPassword: Bool = false
     ) -> AuthError {
@@ -440,7 +437,7 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
             status: "",
             isOnline: isOnline,
             isPremium: tdUser.isPremium,
-            isVerified: tdUser.isVerified
+            isVerified: tdUser.verificationStatus?.isVerified ?? false
         )
     }
 }
