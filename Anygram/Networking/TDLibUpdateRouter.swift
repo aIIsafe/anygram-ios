@@ -31,6 +31,18 @@ final class TDLibUpdateRouter: @unchecked Sendable {
 
     func route(data: Data, client: TDLibClient) {
         guard let update = try? client.decoder.decode(Update.self, from: data) else { return }
+
+        let isAuthUpdate: Bool
+        if case .updateAuthorizationState = update {
+            isAuthUpdate = true
+        } else {
+            isAuthUpdate = false
+        }
+
+        if !isAuthUpdate, !TDLibAccessGate.shared.canProcessChatUpdates {
+            return
+        }
+
         lock.lock()
         let snapshot = handlers.values
         lock.unlock()

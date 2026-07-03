@@ -17,13 +17,9 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
 
     public init() {
         self.chatsSubject = CurrentValueSubject([])
-        _ = TDLibSession.shared.ensureClient { [weak self] _, _ in
-            self?.refreshCurrentUserId()
-        }
         updateHandlerID = TDLibUpdateRouter.shared.addHandler { [weak self] update in
             self?.handleUpdate(update)
         }
-        Task { await reloadAllChats() }
     }
 
     deinit {
@@ -33,6 +29,7 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
     }
 
     public func fetchChats(includeArchived: Bool) async throws -> [Chat] {
+        guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return [] }
         await reloadAllChats()
         lock.lock()
         let snapshot = chats
@@ -42,6 +39,7 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
     }
 
     public func fetchMessages(for chatID: UUID, page: Int, pageSize: Int) async throws -> [Message] {
+        guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return [] }
         guard let client = TDLibSession.shared.tdClient,
               let chatTelegramId = TelegramIdentity.telegramId(from: chatID) else {
             return []
@@ -77,6 +75,7 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
     }
 
     public func sendMessage(_ text: String, to chatID: UUID, replyTo: UUID?) async throws -> Message {
+        guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { throw AuthError.notConfigured }
         guard let client = TDLibSession.shared.tdClient,
               let chatTelegramId = TelegramIdentity.telegramId(from: chatID) else {
             throw AuthError.notConfigured
@@ -226,6 +225,7 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
     // MARK: - Sync
 
     private func reloadAllChats() async {
+        guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return }
         guard let client = TDLibSession.shared.tdClient else { return }
         await refreshCurrentUserId()
 
@@ -401,6 +401,7 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
     }
 
     private func refreshCurrentUserId() {
+        guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return }
         Task {
             guard let client = TDLibSession.shared.tdClient,
                   let me = try? await client.getMe() else { return }
@@ -438,8 +439,10 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
                 Task { await reloadAllChats() }
             }
         case .updateNewChat, .updateChatLastMessage, .updateChatReadInbox, .updateChatPosition:
+            guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return }
             Task { await reloadAllChats() }
         case .updateNewMessage(let payload):
+            guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return }
             let chatUUID = TelegramIdentity.uuid(fromTelegramId: payload.message.chatId)
             Task {
                 guard let client = TDLibSession.shared.tdClient else { return }
@@ -448,6 +451,7 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
                 await reloadAllChats()
             }
         case .updateDeleteMessages(let payload):
+            guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return }
             let chatUUID = TelegramIdentity.uuid(fromTelegramId: payload.chatId)
             lock.lock()
             if var messages = messagesByChat[chatUUID] {
@@ -459,6 +463,7 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
             }
             lock.unlock()
         case .updateChatAction(let payload):
+            guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return }
             let chatUUID = TelegramIdentity.uuid(fromTelegramId: payload.chatId)
             lock.lock()
             let subject = typingSubjects[chatUUID]

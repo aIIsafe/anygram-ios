@@ -6,7 +6,10 @@ struct ChatsListView: View {
     @State private var selectedChat: Chat?
 
     init(container: DIContainer) {
-        _viewModel = StateObject(wrappedValue: ChatsViewModel(repository: container.chatRepository))
+        _viewModel = StateObject(wrappedValue: ChatsViewModel(
+            repository: container.chatRepository,
+            isAuthenticated: { container.isAuthenticated }
+        ))
     }
 
     var body: some View {

@@ -11,9 +11,11 @@ final class ChatsViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     private let repository: ChatRepository
+    private let isAuthenticated: () -> Bool
 
-    init(repository: ChatRepository) {
+    init(repository: ChatRepository, isAuthenticated: @escaping () -> Bool = { true }) {
         self.repository = repository
+        self.isAuthenticated = isAuthenticated
         repository.observeChats()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] chats in
@@ -44,6 +46,7 @@ final class ChatsViewModel: ObservableObject {
     }
 
     func load() async {
+        guard isAuthenticated() else { return }
         isLoading = true
         defer { isLoading = false }
         do {

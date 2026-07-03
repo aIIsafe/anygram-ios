@@ -12,7 +12,6 @@ public final class TDLibUserService: UserServiceProtocol, @unchecked Sendable {
     private let lock = NSLock()
 
     public init() {
-        _ = TDLibSession.shared.ensureClient { _, _ in }
         updateHandlerID = TDLibUpdateRouter.shared.addHandler { [weak self] update in
             if case .updateAuthorizationState(let state) = update,
                case .authorizationStateReady = state.authorizationState {
@@ -28,6 +27,7 @@ public final class TDLibUserService: UserServiceProtocol, @unchecked Sendable {
     }
 
     public func fetchCurrentUser() async throws -> User? {
+        guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return nil }
         guard let client = TDLibSession.shared.tdClient else { return nil }
         let tdUser = try await client.getMe()
         let user = Self.mapTDLibUser(tdUser)
@@ -39,6 +39,7 @@ public final class TDLibUserService: UserServiceProtocol, @unchecked Sendable {
     }
 
     public func fetchContacts() async throws -> [User] {
+        guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return [] }
         guard let client = TDLibSession.shared.tdClient else { return [] }
         let contacts = try await client.getContacts()
         var users: [User] = []

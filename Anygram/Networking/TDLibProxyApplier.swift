@@ -5,7 +5,7 @@ import TDLibKit
 
 /// Applies the built-in MTProto proxy to TDLib, matching BetterTG `TelegramProxy.swift`.
 enum TDLibProxyApplier {
-    private static let addProxyTimeout: TimeInterval = 5
+    private static let addProxyTimeout: TimeInterval = 3
     private static let lock = NSLock()
     private static var appliedProxyID: UUID?
 
@@ -50,9 +50,15 @@ enum TDLibProxyApplier {
                 return
             } catch {
                 let ms = Int(Date().timeIntervalSince(start) * 1000)
+                let isTimeout = (error as? AuthError).map { err in
+                    if case .networkUnavailable = err { return true }
+                    return false
+                } ?? false
                 AppDebugLogger.shared.log(
-                    "addProxy FAILED \(activeProxy.server): \(error.localizedDescription) (\(ms)ms)",
-                    category: .ERROR
+                    isTimeout
+                        ? "addProxy TIMEOUT \(activeProxy.server):\(activeProxy.port) (\(ms)ms) — continuing (BetterTG-style)"
+                        : "addProxy FAILED \(activeProxy.server): \(error.localizedDescription) (\(ms)ms)",
+                    category: isTimeout ? .PROXY : .ERROR
                 )
             }
         }

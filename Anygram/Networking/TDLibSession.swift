@@ -4,16 +4,13 @@ import Foundation
 import TDLibKit
 
 /*
- AUTH HANG ANALYSIS — await points that can block indefinitely without timeout:
- 1. client.setLogStream — bootstrapped with 8s timeout in startBootstrap
- 2. client.addProxy (TDLibProxyApplier) — 5s timeout per candidate
- 3. client.setTdlibParameters — 10s timeout in TDLibAuthBackend.applyTdlibParameters
- 4. client.getAuthorizationState — 5s timeout at each call site in auth backend
- 5. client.setAuthenticationPhoneNumber — 12s timeout inside 15s submit flow
- 6. waitForPhoneNumberState poll loop — capped at 12s (was 30s, caused login hang)
- 7. awaitBootstrap — 8s timeout
- BetterTG avoids (6) entirely: TDLib starts at app launch; login only calls getAuthorizationState + setAuthenticationPhoneNumber.
- TDLibKit serializes sends on per-client queryQueue; updates on updateHandlerQueue — no extra queue needed if we don't block MainActor.
+ AUTH INIT ORDER (matches BetterTG):
+ 1. createClient + register auth update handler
+ 2. setLogStream (bootstrap task, non-blocking)
+ 3. on authorizationStateWaitTdlibParameters → setTdlibParameters
+ 4. after setTdlibParameters OK → addProxy (never before — blocks queryQueue)
+ 5. on authorizationStateWaitPhoneNumber → bootstrapComplete
+ BetterTG avoids blocking login on proxy; addProxy failures are non-fatal.
 */
 
 /// Shared TDLib client lifecycle — mirrors BetterTG `TDLib.swift` bootstrap.
@@ -25,11 +22,12 @@ public final class TDLibSession: @unchecked Sendable {
     private let lock = NSLock()
     private var manager: TDLibClientManager?
     private var client: TDLibClient?
-    /// Single auth handler — BetterTG registers one update handler at client creation.
+    /// Single auth handler — registered once from TDLibAuthBackend.init.
     private var primaryUpdateHandler: ((Data, TDLibClient) -> Void)?
     private var bootstrapStarted = false
     private var bootstrapTask: Task<Void, Never>?
-    private var bootstrapError: AuthError?
+    private var bootstrapComplete = false
+    private var bootstrapWaiters: [CheckedContinuation<Void, Error>] = []
 
     private init() {}
 
@@ -39,11 +37,18 @@ public final class TDLibSession: @unchecked Sendable {
         return client
     }
 
+    /// True after TDLib reaches authorizationStateWaitPhoneNumber (safe to submit phone / call gated APIs).
+    public var isReady: Bool {
+        lock.withLock { bootstrapComplete }
+    }
+
     /// BetterTG: create client + register update handler before any TDLib calls.
     @discardableResult
     public func ensureClient(updateHandler: @escaping (Data, TDLibClient) -> Void) -> TDLibClient {
         lock.lock()
-        primaryUpdateHandler = updateHandler
+        if primaryUpdateHandler == nil {
+            primaryUpdateHandler = updateHandler
+        }
 
         if manager == nil {
             AppDebugLogger.shared.log("TDLibClientManager create", category: .TDLIB)
@@ -73,12 +78,6 @@ public final class TDLibSession: @unchecked Sendable {
         return activeClient
     }
 
-    /// BetterTG starts TDLib in app init — warm up early so auth is not blocked on first tap.
-    public func warmUp(updateHandler: @escaping (Data, TDLibClient) -> Void) {
-        AppDebugLogger.shared.log("warmUp: ensureClient", category: .TDLIB)
-        _ = ensureClient(updateHandler: updateHandler)
-    }
-
     /// Destroy and recreate client when auth is stuck (stale client from failed attempt).
     public func resetClient() {
         lock.lock()
@@ -90,11 +89,18 @@ public final class TDLibSession: @unchecked Sendable {
         }
         bootstrapStarted = false
         bootstrapTask = nil
-        bootstrapError = nil
+        bootstrapComplete = false
+        let waiters = bootstrapWaiters
+        bootstrapWaiters = []
         let activeClient = client
         lock.unlock()
 
+        for waiter in waiters {
+            waiter.resume(throwing: AuthError.stillStarting)
+        }
+
         TDLibProxyApplier.resetAppliedProxy()
+        TDLibAccessGate.shared.reset()
         NotificationCenter.default.post(name: Self.sessionResetNotification, object: nil)
 
         if let activeClient {
@@ -114,9 +120,11 @@ public final class TDLibSession: @unchecked Sendable {
         primaryUpdateHandler = nil
         bootstrapStarted = false
         bootstrapTask = nil
-        bootstrapError = nil
+        bootstrapComplete = false
+        bootstrapWaiters = []
         lock.unlock()
         TDLibProxyApplier.resetAppliedProxy()
+        TDLibAccessGate.shared.reset()
     }
 
     private func dispatchUpdate(data: Data, client: TDLibClient) {
@@ -127,7 +135,7 @@ public final class TDLibSession: @unchecked Sendable {
         TDLibUpdateRouter.shared.route(data: data, client: client)
     }
 
-    /// BetterTG: setLogStream + addProxy once at startup — never block login on proxy ping.
+    /// BetterTG: setLogStream only — addProxy runs after setTdlibParameters in auth backend.
     private func startBootstrap(client: TDLibClient) {
         bootstrapTask = Task {
             let start = Date()
@@ -141,26 +149,57 @@ public final class TDLibSession: @unchecked Sendable {
             } catch {
                 AppDebugLogger.shared.log("setLogStream FAILED: \(error.localizedDescription)", category: .ERROR)
             }
+            AppDebugLogger.shared.log("bootstrap: setLogStream phase done (addProxy deferred until setTdlibParameters)", category: .TDLIB)
+        }
+    }
 
-            let proxyStart = Date()
-            AppDebugLogger.shared.log("bootstrap: addProxy", category: .PROXY)
-            await TDLibProxyApplier.applyDefaultProxy(client: client)
-            AppDebugLogger.shared.log("bootstrap complete (\(Int(Date().timeIntervalSince(proxyStart) * 1000))ms proxy phase)", category: .TDLIB)
+    func markBootstrapComplete() {
+        lock.lock()
+        guard !bootstrapComplete else {
+            lock.unlock()
+            return
+        }
+        bootstrapComplete = true
+        let waiters = bootstrapWaiters
+        bootstrapWaiters = []
+        lock.unlock()
+        AppDebugLogger.shared.log("bootstrapComplete=true (waitPhoneNumber)", category: .TDLIB)
+        for waiter in waiters {
+            waiter.resume()
         }
     }
 
     public func awaitBootstrap(timeout: TimeInterval = 8) async throws {
-        let task = lock.withLock { bootstrapTask }
-        guard let task else {
-            AppDebugLogger.shared.log("awaitBootstrap: no bootstrap task (already done or not started)", category: .TDLIB)
+        if isReady {
+            AppDebugLogger.shared.log("awaitBootstrap: already complete", category: .TDLIB)
             return
         }
-        AppDebugLogger.shared.log("awaitBootstrap: waiting up to \(Int(timeout))s", category: .TDLIB)
-        try await AsyncTimeout.withTimeout(seconds: timeout, error: AuthError.stillStarting) {
-            await task.value
+
+        let logStreamTask = lock.withLock { bootstrapTask }
+        if let logStreamTask {
+            AppDebugLogger.shared.log("awaitBootstrap: waiting for setLogStream task", category: .TDLIB)
+            try? await AsyncTimeout.withTimeout(seconds: 3, error: AuthError.stillStarting) {
+                await logStreamTask.value
+            }
         }
-        if let bootstrapError = lock.withLock({ bootstrapError }) {
-            throw bootstrapError
+
+        if isReady {
+            AppDebugLogger.shared.log("awaitBootstrap: done (ready during setLogStream)", category: .TDLIB)
+            return
+        }
+
+        AppDebugLogger.shared.log("awaitBootstrap: waiting up to \(Int(timeout))s for waitPhoneNumber", category: .TDLIB)
+        try await AsyncTimeout.withTimeout(seconds: timeout, error: AuthError.stillStarting) {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                lock.lock()
+                if bootstrapComplete {
+                    lock.unlock()
+                    continuation.resume()
+                    return
+                }
+                bootstrapWaiters.append(continuation)
+                lock.unlock()
+            }
         }
         AppDebugLogger.shared.log("awaitBootstrap: done", category: .TDLIB)
     }
