@@ -679,7 +679,7 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         return false
     }
 
-    private static func isApiIdInvalidError(_ error: Error) -> Bool {
+    private static func isApiIdInvalidError(_ error: any Error) -> Bool {
         if rawTDLibErrorMessage(from: error).localizedCaseInsensitiveContains("api_id_invalid") {
             return true
         }
