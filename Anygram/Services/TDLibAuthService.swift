@@ -38,7 +38,7 @@ public final class TDLibAuthService: AuthServiceProtocol, @unchecked Sendable {
         #else
         let impl = ScaffoldAuthBackend()
         #endif
-        let subject = CurrentValueSubject(impl.currentState)
+        let subject = CurrentValueSubject<AuthAuthorizationState, Never>(impl.currentState)
         impl.onStateChange = { subject.send($0) }
         return (impl, subject)
     }
