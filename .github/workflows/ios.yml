@@ -100,7 +100,7 @@ jobs:
           path: |
             ~/Library/Caches/org.swift.swiftpm
             ${{ runner.temp }}/DerivedData
-          key: ${{ runner.os }}-tdlib-v2-${{ hashFiles('project.yml', 'ci/build-tdlib-ipa.sh') }}
+          key: ${{ runner.os }}-tdlib-v3-${{ hashFiles('project.yml', 'ci/build-tdlib-ipa.sh') }}
           restore-keys: |
             ${{ runner.os }}-tdlib-
 

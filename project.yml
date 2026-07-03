@@ -50,6 +50,10 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         DEVELOPMENT_TEAM: ""
         OTHER_LDFLAGS: "$(inherited) -lc++ -lz"
+      configs:
+        Release:
+          SWIFT_COMPILATION_MODE: incremental
+          OTHER_SWIFT_FLAGS: "$(inherited) -Xfrontend -disable-batch-mode -Xfrontend -disable-cmo"
     info:
       path: Anygram/Resources/Info.plist
       properties:

@@ -17,7 +17,6 @@ xcodebuild build \
   -configuration Release \
   -destination "generic/platform=iOS" \
   -derivedDataPath "$DERIVED_DATA" \
-  -jobs 1 \
   CODE_SIGNING_ALLOWED=NO \
   CODE_SIGNING_REQUIRED=NO \
   CODE_SIGN_IDENTITY="-" \
