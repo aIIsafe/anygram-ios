@@ -19,6 +19,7 @@ public enum AuthError: Error, LocalizedError, Equatable, Sendable {
     case invalidCode
     case invalidPassword
     case networkUnavailable
+    case proxyConnectionFailed
     case stillStarting
     case floodWait(Int)
     case tdlibError(String)
@@ -36,6 +37,8 @@ public enum AuthError: Error, LocalizedError, Equatable, Sendable {
             return L10n.authInvalidPassword
         case .networkUnavailable:
             return L10n.authNetworkError
+        case .proxyConnectionFailed:
+            return L10n.authProxyFailed
         case .stillStarting:
             return L10n.authStillStarting
         case .floodWait(let seconds):

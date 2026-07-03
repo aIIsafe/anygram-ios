@@ -73,6 +73,17 @@ struct PhoneInputView: View {
                     .padding(.horizontal, AppSpacing.lg)
             }
 
+            if let status = viewModel.connectionStatusText {
+                HStack(spacing: AppSpacing.xs) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(status)
+                        .font(AppTypography.caption)
+                        .foregroundStyle(AppColors.textSecondary)
+                }
+                .padding(.horizontal, AppSpacing.lg)
+            }
+
             if viewModel.usesScaffoldAuth {
                 Text(L10n.authScaffoldNotice)
                     .font(AppTypography.caption)

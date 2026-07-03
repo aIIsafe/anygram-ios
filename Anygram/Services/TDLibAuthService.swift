@@ -184,8 +184,10 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         _ = TDLibSession.shared.ensureClient { [weak self] data, client in
             self?.handleUpdate(data: data, client: client)
         }
-        await TDLibSession.shared.awaitBootstrap()
-        try await waitForPhoneNumberState(timeout: 30)
+        try await TDLibSession.shared.awaitBootstrap(timeout: 60)
+        AuthConnectionStatus.post(.waitingTdlib)
+        try await waitForPhoneNumberState(timeout: 45)
+        AuthConnectionStatus.post(.idle)
     }
 
     func setPhoneNumber(_ phoneNumber: String) async throws {
@@ -194,18 +196,25 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         let digits = normalized.filter(\.isNumber)
         guard digits.count >= 10 else { throw AuthError.invalidPhoneNumber }
 
-        await TDLibProxyApplier.applyForcedProxy(client: client)
-        try await waitForPhoneNumberState(timeout: 15)
+        try await TDLibProxyApplier.applyForcedProxy(client: client)
+        AuthConnectionStatus.post(.waitingTdlib)
+        try await waitForPhoneNumberState(timeout: 30)
 
+        AuthConnectionStatus.post(.sendingPhone)
         authLogger.info("setAuthenticationPhoneNumber \(normalized, privacy: .private)")
         do {
-            _ = try await client.setAuthenticationPhoneNumber(
-                phoneNumber: normalized,
-                settings: nil
-            )
+            try await AsyncTimeout.withTimeout(seconds: 45, error: AuthError.networkUnavailable) {
+                _ = try await client.setAuthenticationPhoneNumber(
+                    phoneNumber: normalized,
+                    settings: nil
+                )
+            }
+        } catch let error as AuthError {
+            throw error
         } catch {
             throw mapTDLibError(error)
         }
+        AuthConnectionStatus.post(.idle)
     }
 
     func checkAuthenticationCode(_ code: String) async throws {
@@ -267,8 +276,10 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         case .authorizationStateWaitPhoneNumber:
             currentState = .waitPhoneNumber
             onStateChange?(currentState)
-        case .authorizationStateWaitCode:
-            currentState = .waitCode(codeLength: 5, resendTimeout: 60)
+        case .authorizationStateWaitCode(let waitCode):
+            let length = Self.codeLength(from: waitCode.codeInfo)
+            let timeout = max(Int(waitCode.codeInfo.timeout), 0)
+            currentState = .waitCode(codeLength: length, resendTimeout: timeout > 0 ? timeout : 60)
             onStateChange?(currentState)
         case .authorizationStateWaitPassword(let info):
             currentState = .waitPassword(hint: info.passwordHint)
@@ -338,12 +349,37 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
                     throw AuthError.tdlibError(L10n.authAuthorizationFailed)
                 }
                 if case .authorizationStateWaitTdlibParameters = state {
+                    AuthConnectionStatus.post(.waitingTdlib)
                     await applyTdlibParameters()
                 }
             }
             try await Task.sleep(nanoseconds: 250_000_000)
         }
+
+        if let client = TDLibSession.shared.tdClient,
+           let state = try? await client.getAuthorizationState() {
+            authLogger.error("Timed out waiting for phone state; TDLib state: \(String(describing: state), privacy: .public)")
+        }
         throw AuthError.stillStarting
+    }
+
+    private static func codeLength(from codeInfo: AuthenticationCodeInfo) -> Int {
+        switch codeInfo.type {
+        case .authenticationCodeTypeTelegramMessage(let info):
+            return max(Int(info.length), 5)
+        case .authenticationCodeTypeSms(let info):
+            return max(Int(info.length), 5)
+        case .authenticationCodeTypeCall(let info):
+            return max(Int(info.length), 5)
+        case .authenticationCodeTypeFlashCall(let info):
+            return max(info.pattern.count, 5)
+        case .authenticationCodeTypeMissedCall(let info):
+            return max(Int(info.length), 5)
+        case .authenticationCodeTypeFragment(let info):
+            return max(Int(info.length), 5)
+        default:
+            return 5
+        }
     }
 
     private static func normalizePhoneNumber(_ phoneNumber: String) -> String {

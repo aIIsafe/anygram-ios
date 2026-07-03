@@ -17,6 +17,7 @@ final class AuthViewModel: ObservableObject {
     @Published var password = ""
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var connectionPhase: AuthConnectionPhase = .idle
     @Published var resendSeconds = 0
     @Published var passwordHint: String?
     @Published var codeLength = 5
@@ -34,6 +35,27 @@ final class AuthViewModel: ObservableObject {
                 self?.syncStepFromState(state)
             }
             .store(in: &cancellables)
+
+        AuthConnectionStatus.publisher()
+            .compactMap { $0.object as? AuthConnectionPhase }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] phase in
+                self?.connectionPhase = phase
+            }
+            .store(in: &cancellables)
+    }
+
+    var connectionStatusText: String? {
+        switch connectionPhase {
+        case .idle:
+            return nil
+        case .connectingProxy:
+            return L10n.authConnectingProxy
+        case .waitingTdlib:
+            return L10n.authWaitingTdlib
+        case .sendingPhone:
+            return L10n.authSendingPhone
+        }
     }
 
     var formattedPhone: String {
@@ -59,7 +81,11 @@ final class AuthViewModel: ObservableObject {
     func bootstrap() async {
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
+        connectionPhase = .connectingProxy
+        defer {
+            isLoading = false
+            connectionPhase = .idle
+        }
         do {
             try await authRepository.bootstrap()
         } catch {
@@ -74,7 +100,10 @@ final class AuthViewModel: ObservableObject {
         }
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
+        defer {
+            isLoading = false
+            connectionPhase = .idle
+        }
         do {
             try await authRepository.submitPhoneNumber(fullPhoneNumber)
         } catch {

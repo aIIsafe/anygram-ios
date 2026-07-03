@@ -166,6 +166,10 @@ enum L10n {
     static let authScaffoldCodeHint = String(localized: "auth.scaffoldCodeHint")
     static let authStillStarting = String(localized: "auth.stillStarting")
     static let authNetworkError = String(localized: "auth.networkError")
+    static let authProxyFailed = String(localized: "auth.proxyFailed")
+    static let authConnectingProxy = String(localized: "auth.connectingProxy")
+    static let authWaitingTdlib = String(localized: "auth.waitingTdlib")
+    static let authSendingPhone = String(localized: "auth.sendingPhone")
     static let authAuthorizationFailed = String(localized: "auth.authorizationFailed")
 
     static func authFloodWait(_ seconds: Int) -> String {

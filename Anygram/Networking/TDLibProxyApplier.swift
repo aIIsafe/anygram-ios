@@ -3,11 +3,15 @@ import Foundation
 #if canImport(TDLibKit)
 import TDLibKit
 
-/// Applies the built-in MTProto proxy to TDLib, matching the Flutter ProxyService behavior.
+/// Applies the built-in MTProto proxy to TDLib, matching BetterTG `TelegramProxy.swift`.
 enum TDLibProxyApplier {
     private static let retryDelayNanoseconds: UInt64 = 3_000_000_000
+    private static let maxAttempts = 5
+    private static let perAttemptTimeout: TimeInterval = 15
+    private static let lock = NSLock()
+    private static var appliedProxyID: UUID?
 
-    static func applyForcedProxy(client: TDLibClient, proxy: Anygram.Proxy? = nil) async {
+    static func applyForcedProxy(client: TDLibClient, proxy: Anygram.Proxy? = nil) async throws {
         let activeProxy: Anygram.Proxy
         if let proxy {
             activeProxy = proxy
@@ -16,26 +20,59 @@ enum TDLibProxyApplier {
         } else {
             activeProxy = Anygram.Proxy.builtInDefault
         }
-        var attempt = 0
 
-        while attempt < 10 {
-            attempt += 1
+        lock.lock()
+        if appliedProxyID == activeProxy.id {
+            lock.unlock()
+            return
+        }
+        lock.unlock()
+
+        AuthConnectionStatus.post(.connectingProxy)
+        var lastError: Error?
+
+        for attempt in 1...maxAttempts {
             do {
-                _ = try await client.addProxy(
-                    enable: true,
-                    port: activeProxy.port,
-                    server: activeProxy.server,
-                    type: .proxyTypeMtproto(
-                        ProxyTypeMtproto(secret: activeProxy.secret)
+                _ = try await AsyncTimeout.withTimeout(
+                    seconds: perAttemptTimeout,
+                    error: AuthError.networkUnavailable
+                ) {
+                    try await client.addProxy(
+                        enable: true,
+                        port: activeProxy.port,
+                        server: activeProxy.server,
+                        type: .proxyTypeMtproto(
+                            ProxyTypeMtproto(secret: activeProxy.secret)
+                        )
                     )
-                )
+                }
                 await TDLibProxyBridge.shared.configure(proxy: activeProxy)
+                lock.lock()
+                appliedProxyID = activeProxy.id
+                lock.unlock()
                 return
             } catch {
-                if attempt >= 10 { return }
+                lastError = error
+                if attempt < maxAttempts {
+                    try? await Task.sleep(nanoseconds: retryDelayNanoseconds)
+                }
             }
-            try? await Task.sleep(nanoseconds: retryDelayNanoseconds)
         }
+
+        throw lastError.map { mapProxyError($0) } ?? AuthError.proxyConnectionFailed
+    }
+
+    static func resetAppliedProxy() {
+        lock.lock()
+        appliedProxyID = nil
+        lock.unlock()
+    }
+
+    private static func mapProxyError(_ error: Error) -> AuthError {
+        if let authError = error as? AuthError {
+            return authError
+        }
+        return .proxyConnectionFailed
     }
 }
 #endif

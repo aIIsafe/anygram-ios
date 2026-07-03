@@ -906,6 +906,30 @@
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Too many attempts. Try again in %lld seconds." } },
         "ru" : { "stringUnit" : { "state" : "translated", "value" : "Слишком много попыток. Повторите через %lld сек." } }
       }
+    },
+    "auth.proxyFailed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Could not connect via proxy." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Не удалось подключиться через прокси." } }
+      }
+    },
+    "auth.connectingProxy" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Connecting proxy…" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Подключение прокси…" } }
+      }
+    },
+    "auth.waitingTdlib" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Waiting for Telegram…" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Ожидание Telegram…" } }
+      }
+    },
+    "auth.sendingPhone" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Sending phone number…" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Отправка номера…" } }
+      }
     }
   },
   "version" : "1.0"
