@@ -41,13 +41,10 @@ enum TelegramAPIConfiguration {
     }
 
     private static var tdStorageRoot: URL {
-        let base = FileManager.default.url(
-            for: .documentDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        ).appending(path: "td", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        return base
+        let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        let root = base.appendingPathComponent("td", isDirectory: true)
+        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
     }
 }

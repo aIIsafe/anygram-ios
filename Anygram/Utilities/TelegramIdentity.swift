@@ -59,7 +59,7 @@ enum TelegramIdentity {
     }
 
     private static func appendBigEndian(_ value: Int64, to bytes: inout [UInt8], offset: Int) {
-        var bigEndian = value.bigEndian
+        let bigEndian = value.bigEndian
         withUnsafeBytes(of: bigEndian) { raw in
             for index in 0..<8 {
                 bytes[offset + index] = raw[index]
