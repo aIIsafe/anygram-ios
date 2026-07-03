@@ -20,10 +20,14 @@ public final class TDLibAuthService: AuthServiceProtocol, @unchecked Sendable {
     }
 
     public init() {
-        #if canImport(TDLibKit)
-        let backend = TDLibAuthBackend()
+        #if USE_SCAFFOLD_AUTH
+        let backend: AuthBackend = ScaffoldAuthBackend()
+        #elseif targetEnvironment(simulator)
+        let backend: AuthBackend = ScaffoldAuthBackend()
+        #elseif canImport(TDLibKit)
+        let backend: AuthBackend = TDLibAuthBackend()
         #else
-        let backend = ScaffoldAuthBackend()
+        let backend: AuthBackend = ScaffoldAuthBackend()
         #endif
         self.backend = backend
         self.stateSubject = CurrentValueSubject(backend.currentState)
@@ -61,6 +65,10 @@ public final class TDLibAuthService: AuthServiceProtocol, @unchecked Sendable {
         try await backend.logout()
         stateSubject.send(backend.currentState)
     }
+
+    public func fetchCurrentUser() async throws -> User? {
+        try await backend.fetchCurrentUser()
+    }
 }
 
 // MARK: - Backend protocol
@@ -75,6 +83,7 @@ private protocol AuthBackend: Sendable {
     func checkAuthenticationPassword(_ password: String) async throws
     func resendAuthenticationCode() async throws
     func logout() async throws
+    func fetchCurrentUser() async throws -> User?
 }
 
 // MARK: - Scaffold backend (no TDLib binary)
@@ -130,6 +139,19 @@ private final class ScaffoldAuthBackend: AuthBackend, @unchecked Sendable {
         currentState = .waitPhoneNumber
         onStateChange?(currentState)
     }
+
+    func fetchCurrentUser() async throws -> User? {
+        guard case .ready = currentState else { return nil }
+        return User(
+            id: MockDataGenerator.currentUserID,
+            name: "Anygram User",
+            username: "anygram_user",
+            avatarColorHex: "#4ECDC4",
+            phone: pendingPhone ?? "+7 000 000 00 00",
+            bio: "Scaffold mode",
+            isOnline: true
+        )
+    }
 }
 
 #if canImport(TDLibKit)
@@ -138,122 +160,198 @@ import TDLibKit
 private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
     var onStateChange: (@Sendable (AuthAuthorizationState) -> Void)?
     private(set) var currentState: AuthAuthorizationState = .unknown
-    private var manager: TDLibClientManager?
-    private var client: TDLibClient?
     private var parametersApplied = false
+    private var cachedUser: User?
+    private let stateLock = NSLock()
 
     func initialize() async throws {
         guard TelegramAPIConfiguration.isConfigured else {
             throw AuthError.notConfigured
         }
-        if manager == nil {
-            manager = TDLibClientManager()
+        _ = TDLibSession.shared.ensureClient { [weak self] data, client in
+            self?.handleUpdate(data: data, client: client)
         }
-        guard let manager else { throw AuthError.notConfigured }
-        if client == nil {
-            client = manager.createClient { [weak self] data, tdClient in
-                self?.handleUpdate(data: data, client: tdClient)
-            }
+        try await Task.sleep(nanoseconds: 500_000_000)
+        stateLock.lock()
+        let state = currentState
+        stateLock.unlock()
+        if case .unknown = state {
+            currentState = .waitPhoneNumber
+            onStateChange?(currentState)
         }
-        try await applyTdlibParameters()
-        try await applyProxyIfNeeded()
     }
 
     func setPhoneNumber(_ phoneNumber: String) async throws {
-        guard let client else { throw AuthError.notConfigured }
-        _ = try await client.setAuthenticationPhoneNumber(
-            phoneNumber: phoneNumber,
-            settings: nil
-        )
+        guard let client = TDLibSession.shared.tdClient else { throw AuthError.notConfigured }
+        let digits = phoneNumber.filter(\.isNumber)
+        guard digits.count >= 10 else { throw AuthError.invalidPhoneNumber }
+        do {
+            _ = try await client.setAuthenticationPhoneNumber(
+                phoneNumber: phoneNumber,
+                settings: nil
+            )
+        } catch {
+            throw mapTDLibError(error)
+        }
     }
 
     func checkAuthenticationCode(_ code: String) async throws {
-        guard let client else { throw AuthError.notConfigured }
-        _ = try await client.checkAuthenticationCode(code: code)
+        guard let client = TDLibSession.shared.tdClient else { throw AuthError.notConfigured }
+        let digits = code.filter(\.isNumber)
+        guard !digits.isEmpty else { throw AuthError.invalidCode }
+        do {
+            _ = try await client.checkAuthenticationCode(code: code)
+        } catch {
+            throw mapTDLibError(error, invalidCode: true, invalidPassword: false)
+        }
     }
 
     func checkAuthenticationPassword(_ password: String) async throws {
-        guard let client else { throw AuthError.notConfigured }
-        _ = try await client.checkAuthenticationPassword(password: password)
+        guard let client = TDLibSession.shared.tdClient else { throw AuthError.notConfigured }
+        guard !password.isEmpty else { throw AuthError.invalidPassword }
+        do {
+            _ = try await client.checkAuthenticationPassword(password: password)
+        } catch {
+            throw mapTDLibError(error, invalidCode: false, invalidPassword: true)
+        }
     }
 
     func resendAuthenticationCode() async throws {
-        guard let client else { throw AuthError.notConfigured }
+        guard let client = TDLibSession.shared.tdClient else { throw AuthError.notConfigured }
         _ = try await client.resendAuthenticationCode()
     }
 
     func logout() async throws {
-        guard let client else {
-            currentState = .waitPhoneNumber
-            onStateChange?(currentState)
-            return
+        cachedUser = nil
+        if let client = TDLibSession.shared.tdClient {
+            _ = try await client.logOut()
         }
-        _ = try await client.logOut()
         currentState = .waitPhoneNumber
         onStateChange?(currentState)
     }
 
-    private func applyTdlibParameters() async throws {
-        guard let client, !parametersApplied else { return }
-        let params = TdlibParameters(
-            apiId: TelegramAPIConfiguration.apiId,
-            apiHash: TelegramAPIConfiguration.apiHash,
-            systemLanguageCode: TelegramAPIConfiguration.systemLanguageCode,
-            deviceModel: TelegramAPIConfiguration.deviceModel,
-            systemVersion: ProcessInfo.processInfo.operatingSystemVersionString,
-            applicationVersion: TelegramAPIConfiguration.applicationVersion,
-            useMessageDatabase: true,
-            useSecretChats: false,
-            databaseDirectory: TelegramAPIConfiguration.databaseDirectory,
-            filesDirectory: TelegramAPIConfiguration.filesDirectory,
-            useFileDatabase: true,
-            useChatInfoDatabase: true,
-            useTestDc: false
-        )
-        _ = try await client.setTdlibParameters(parameters: params)
-        parametersApplied = true
-    }
-
-    private func applyProxyIfNeeded() async {
-        let proxy = await TDLibProxyBridge.shared.activeProxy
-        guard let proxy, let client else { return }
-        let secretData = Data(base64Encoded: proxy.secret) ?? Data(proxy.secret.utf8)
-        _ = try? await client.addProxy(
-            server: proxy.server,
-            port: proxy.port,
-            enable: true,
-            type: .proxyTypeMtproto(secret: secretData)
-        )
+    func fetchCurrentUser() async throws -> User? {
+        if let cachedUser { return cachedUser }
+        guard let client = TDLibSession.shared.tdClient else { return nil }
+        let tdUser = try await client.getMe()
+        let user = Self.mapTDLibUser(tdUser)
+        cachedUser = user
+        return user
     }
 
     private func handleUpdate(data: Data, client: TDLibClient) {
         guard let update = try? client.decoder.decode(Update.self, from: data) else { return }
         if case .updateAuthorizationState(let authUpdate) = update {
-            mapAuthorizationState(authUpdate.authorizationState)
+            Task { await processAuthorizationState(authUpdate.authorizationState) }
         }
     }
 
-    private func mapAuthorizationState(_ state: AuthorizationState) {
+    private func processAuthorizationState(_ state: AuthorizationState) async {
         switch state {
+        case .authorizationStateWaitTdlibParameters:
+            await applyTdlibParameters()
         case .authorizationStateWaitPhoneNumber:
             currentState = .waitPhoneNumber
+            onStateChange?(currentState)
         case .authorizationStateWaitCode(let info):
             currentState = .waitCode(
-                codeLength: Int(info.codeInfo.type.length),
-                resendTimeout: Int(info.codeInfo.timeout)
+                codeLength: max(Int(info.codeInfo.type.length), 5),
+                resendTimeout: max(Int(info.codeInfo.timeout), 0)
             )
+            onStateChange?(currentState)
         case .authorizationStateWaitPassword(let info):
             currentState = .waitPassword(hint: info.passwordHint)
+            onStateChange?(currentState)
         case .authorizationStateWaitRegistration:
             currentState = .waitRegistration
+            onStateChange?(currentState)
         case .authorizationStateReady:
             currentState = .ready
+            onStateChange?(currentState)
+            cachedUser = try? await fetchCurrentUser()
         case .authorizationStateClosed:
             currentState = .closed
+            cachedUser = nil
+            onStateChange?(currentState)
+        case .authorizationStateLoggingOut:
+            currentState = .waitPhoneNumber
+            cachedUser = nil
+            onStateChange?(currentState)
         default:
             break
         }
-        onStateChange?(currentState)
+    }
+
+    private func applyTdlibParameters() async {
+        guard let client = TDLibSession.shared.tdClient, !parametersApplied else { return }
+        do {
+            let params = TdlibParameters(
+                apiId: TelegramAPIConfiguration.apiId,
+                apiHash: TelegramAPIConfiguration.apiHash,
+                systemLanguageCode: TelegramAPIConfiguration.systemLanguageCode,
+                deviceModel: TelegramAPIConfiguration.deviceModel,
+                systemVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+                applicationVersion: TelegramAPIConfiguration.applicationVersion,
+                useMessageDatabase: true,
+                useSecretChats: false,
+                databaseDirectory: TelegramAPIConfiguration.databaseDirectoryPath,
+                filesDirectory: TelegramAPIConfiguration.filesDirectoryPath,
+                useFileDatabase: true,
+                useChatInfoDatabase: true,
+                useTestDc: false
+            )
+            _ = try await client.setTdlibParameters(parameters: params)
+            parametersApplied = true
+            if let client = TDLibSession.shared.tdClient {
+                await TDLibProxyApplier.applyForcedProxy(client: client)
+            }
+        } catch {
+            currentState = .closed
+            onStateChange?(currentState)
+        }
+    }
+
+    private func mapTDLibError(
+        _ error: Error,
+        invalidCode: Bool = false,
+        invalidPassword: Bool = false
+    ) -> AuthError {
+        let message = error.localizedDescription.lowercased()
+        if invalidCode, message.contains("phone") || message.contains("code") || message.contains("400") {
+            return .invalidCode
+        }
+        if invalidPassword, message.contains("password") || message.contains("400") {
+            return .invalidPassword
+        }
+        return .tdlibError(error.localizedDescription)
+    }
+
+    private static func mapTDLibUser(_ tdUser: TDLibKit.User) -> User {
+        let firstName = tdUser.firstName
+        let lastName = tdUser.lastName
+        let displayName = [firstName, lastName].filter { !$0.isEmpty }.joined(separator: " ")
+        let username = tdUser.usernames?.editableUsername
+            ?? tdUser.usernames?.activeUsernames.first
+            ?? ""
+        let isOnline: Bool
+        if case .userStatusOnline = tdUser.status {
+            isOnline = true
+        } else {
+            isOnline = false
+        }
+
+        return User(
+            id: TelegramIdentity.uuid(fromTelegramId: tdUser.id),
+            name: displayName.isEmpty ? firstName : displayName,
+            username: username,
+            avatarColorHex: TelegramIdentity.colorHex(forTelegramId: tdUser.id),
+            phone: tdUser.phoneNumber,
+            bio: "",
+            status: "",
+            isOnline: isOnline,
+            isPremium: tdUser.isPremium,
+            isVerified: tdUser.isVerified
+        )
     }
 }
 #endif

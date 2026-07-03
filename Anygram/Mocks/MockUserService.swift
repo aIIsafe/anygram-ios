@@ -63,5 +63,21 @@ public final class MockUserService: UserServiceProtocol, @unchecked Sendable {
     public func observeContacts() -> AnyPublisher<[User], Never> {
         contactsSubject.eraseToAnyPublisher()
     }
+
+    public func fetchCurrentUser() async throws -> User? {
+        lock.lock()
+        let pinned = contacts.first { $0.id == MockDataGenerator.currentUserID }
+        lock.unlock()
+        if let pinned { return pinned }
+        return User(
+            id: MockDataGenerator.currentUserID,
+            name: "Anygram User",
+            username: "anygram_user",
+            avatarColorHex: "#4ECDC4",
+            phone: "+7 000 000 00 00",
+            bio: "Mock mode",
+            isOnline: true
+        )
+    }
 }
 

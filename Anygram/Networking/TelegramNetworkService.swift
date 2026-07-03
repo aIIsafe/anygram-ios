@@ -13,8 +13,14 @@ public final class TelegramNetworkService: @unchecked Sendable {
 
     public func bootstrapForLogin() async throws {
         await proxyService.initializeOnFirstLaunch()
+        let proxies = try await proxyService.fetchProxies()
+        let settings = PreferencesStorage.shared.loadSettings()
+        let active = proxies.first(where: { $0.id == settings?.activeProxyID && $0.isEnabled })
+            ?? proxies.first(where: \.isEnabled)
+            ?? proxies.first
+            ?? Proxy.builtInDefault
+        await TDLibProxyBridge.shared.configure(proxy: active)
         try await authService.initialize()
-        try await applyActiveProxy()
     }
 
     public func applyActiveProxy() async throws {

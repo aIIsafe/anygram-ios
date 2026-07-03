@@ -30,6 +30,7 @@ public final class DIContainer: ObservableObject {
     public let proxyRepository: ProxyRepository
 
     @Published public private(set) var isAuthenticated = false
+    @Published public private(set) var currentUser: User?
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -46,28 +47,27 @@ public final class DIContainer: ObservableObject {
         self.networkService = TelegramNetworkService(proxyService: proxyService, authService: authService)
         self.authRepository = AuthRepository(authService: authService, networkService: networkService)
 
-        let useMocks = useMockServices || !authService.isAuthenticated
-        if useMocks {
-            let chatService = MockChatService()
-            let userService = MockUserService()
-            self.chatService = chatService
-            self.userService = userService
-            self.callsService = MockCallsService()
-            self.searchService = MockSearchService(chatService: chatService, userService: userService)
-            self.settingsService = MockSettingsService()
-            self.mediaService = MockMediaService(cache: imageCache)
-            self.profileService = MockProfileService(userService: userService)
-        } else {
-            let chatService = MockChatService()
-            let userService = MockUserService()
-            self.chatService = chatService
-            self.userService = userService
-            self.callsService = MockCallsService()
-            self.searchService = MockSearchService(chatService: chatService, userService: userService)
-            self.settingsService = MockSettingsService()
-            self.mediaService = MockMediaService(cache: imageCache)
-            self.profileService = MockProfileService(userService: userService)
-        }
+        let chatService = MockChatService()
+        self.chatService = chatService
+
+        #if USE_SCAFFOLD_AUTH
+        self.userService = MockUserService()
+        #elseif targetEnvironment(simulator)
+        self.userService = MockUserService()
+        #elseif canImport(TDLibKit)
+        self.userService = TDLibUserService()
+        #else
+        self.userService = MockUserService()
+        #endif
+
+        self.callsService = MockCallsService()
+        self.searchService = MockSearchService(
+            chatService: chatService,
+            userService: self.userService
+        )
+        self.settingsService = MockSettingsService()
+        self.mediaService = MockMediaService(cache: imageCache)
+        self.profileService = MockProfileService(userService: self.userService)
 
         self.chatRepository = ChatRepository(chatService: chatService)
         self.userRepository = UserRepository(userService: userService)
@@ -80,21 +80,38 @@ public final class DIContainer: ObservableObject {
         isAuthenticated = authService.isAuthenticated
         authService.authorizationStatePublisher
             .receive(on: DispatchQueue.main)
-            .map { state in
-                if case .ready = state { return true }
-                return false
-            }
-            .sink { [weak self] authenticated in
-                self?.isAuthenticated = authenticated
+            .sink { [weak self] state in
+                guard let self else { return }
+                let authenticated: Bool
+                if case .ready = state {
+                    authenticated = true
+                } else {
+                    authenticated = false
+                }
+                self.isAuthenticated = authenticated
+                if authenticated {
+                    Task { await self.loadCurrentUser() }
+                } else {
+                    self.currentUser = nil
+                }
             }
             .store(in: &cancellables)
+
+        if authService.isAuthenticated {
+            Task { await loadCurrentUser() }
+        }
     }
 
     public func bootstrap() async {
         await proxyRepository.initializeOnFirstLaunch()
     }
 
+    public func loadCurrentUser() async {
+        currentUser = try? await authRepository.fetchCurrentUser()
+    }
+
     public func logout() async {
         try? await authRepository.logout()
+        currentUser = nil
     }
 }

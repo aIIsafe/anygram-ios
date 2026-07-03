@@ -10,6 +10,7 @@ on:
 jobs:
   build-ipa:
     runs-on: macos-latest
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -21,9 +22,14 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: Resolve Swift packages
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project Anygram.xcodeproj \
+            -scheme Anygram
+
       - name: Archive
         run: |
-          xcodegen generate
           xcodebuild archive \
             -project Anygram.xcodeproj \
             -scheme Anygram \
@@ -33,7 +39,8 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) USE_SCAFFOLD_AUTH'
 
       - name: Export IPA (unsigned)
         run: |

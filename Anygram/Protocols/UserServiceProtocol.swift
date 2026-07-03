@@ -9,4 +9,5 @@ public protocol UserServiceProtocol: Sendable {
     func togglePinContact(id: UUID) async throws -> User
     func deleteContact(id: UUID) async throws
     func observeContacts() -> AnyPublisher<[User], Never>
+    func fetchCurrentUser() async throws -> User?
 }

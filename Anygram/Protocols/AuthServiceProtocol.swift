@@ -54,4 +54,5 @@ public protocol AuthServiceProtocol: Sendable {
     func checkAuthenticationPassword(_ password: String) async throws
     func resendAuthenticationCode() async throws
     func logout() async throws
+    func fetchCurrentUser() async throws -> User?
 }

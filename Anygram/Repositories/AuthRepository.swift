@@ -46,4 +46,8 @@ public final class AuthRepository: @unchecked Sendable {
     public func logout() async throws {
         try await authService.logout()
     }
+
+    public func fetchCurrentUser() async throws -> User? {
+        try await authService.fetchCurrentUser()
+    }
 }

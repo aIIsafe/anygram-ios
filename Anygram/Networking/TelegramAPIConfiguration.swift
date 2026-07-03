@@ -33,4 +33,19 @@ enum TelegramAPIConfiguration {
     static let deviceModel = "iPhone"
     static let databaseDirectory = "tdlib"
     static let filesDirectory = "tdlib_files"
+
+    static var databaseDirectoryPath: String {
+        storageRoot.appendingPathComponent(databaseDirectory, isDirectory: true).path
+    }
+
+    static var filesDirectoryPath: String {
+        storageRoot.appendingPathComponent(filesDirectory, isDirectory: true).path
+    }
+
+    private static var storageRoot: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Anygram", isDirectory: true)
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        return base
+    }
 }
