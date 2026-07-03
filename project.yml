@@ -12,7 +12,7 @@ options:
 packages:
   TDLibKit:
     url: https://github.com/Swiftgram/TDLibKit
-    revision: 21de7c2fb99c180e549e171591a42a34dd829c3d
+    revision: 245888f853f5e304029f4fa423af14a045476f30
 
 settings:
   base:

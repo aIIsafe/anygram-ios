@@ -17,14 +17,13 @@ xcodebuild build \
   -configuration Release \
   -destination "generic/platform=iOS" \
   -derivedDataPath "$DERIVED_DATA" \
+  -jobs 1 \
   CODE_SIGNING_ALLOWED=NO \
   CODE_SIGNING_REQUIRED=NO \
   CODE_SIGN_IDENTITY="-" \
   DEVELOPMENT_TEAM="" \
   PROVISIONING_PROFILE_SPECIFIER="" \
-  ONLY_ACTIVE_ARCH=YES \
-  SWIFT_COMPILATION_MODE=incremental \
-  OTHER_SWIFT_FLAGS="-Xfrontend -disable-batch-mode"
+  IPHONEOS_DEPLOYMENT_TARGET=17.0
 
 APP_PATH="$(find "$DERIVED_DATA" -path "*/Build/Products/Release-iphoneos/Anygram.app" -type d | head -1)"
 if [[ -z "$APP_PATH" || ! -d "$APP_PATH" ]]; then
