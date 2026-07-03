@@ -6,11 +6,18 @@ struct AnygramApp: App {
 
     var body: some Scene {
         WindowGroup {
-            MainTabView(container: container)
-                .environmentObject(container)
-                .task {
-                    await container.bootstrap()
+            Group {
+                if container.isAuthenticated {
+                    MainTabView(container: container)
+                } else {
+                    AuthFlowView(container: container)
                 }
+            }
+            .environmentObject(container)
+            .animation(AppAnimation.standard, value: container.isAuthenticated)
+            .task {
+                await container.bootstrap()
+            }
         }
     }
 }

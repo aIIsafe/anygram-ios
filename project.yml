@@ -7,6 +7,7 @@ options:
   xcodeVersion: "15.0"
   createIntermediateGroups: true
   groupSortPosition: top
+  developmentLanguage: ru
 
 settings:
   base:
@@ -14,6 +15,8 @@ settings:
     TARGETED_DEVICE_FAMILY: "1,2"
     SUPPORTS_MACCATALYST: false
     ENABLE_USER_SCRIPT_SANDBOXING: false
+    SWIFT_EMIT_LOC_STRINGS: YES
+    DEVELOPMENT_LANGUAGE: ru
 
 targets:
   Anygram:
@@ -28,6 +31,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.anygram.app
         PRODUCT_NAME: Anygram
         INFOPLIST_KEY_CFBundleDisplayName: Anygram
+        INFOPLIST_KEY_CFBundleDevelopmentRegion: ru
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: true
         INFOPLIST_KEY_UILaunchScreen_Generation: true
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
@@ -37,10 +41,12 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         DEVELOPMENT_TEAM: ""
+        OTHER_LDFLAGS: "$(inherited)"
     info:
       path: Anygram/Resources/Info.plist
       properties:
         CFBundleDisplayName: Anygram
+        CFBundleDevelopmentRegion: ru
         UILaunchScreen: {}
 
 schemes:

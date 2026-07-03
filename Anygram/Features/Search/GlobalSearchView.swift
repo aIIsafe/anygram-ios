@@ -13,7 +13,7 @@ struct GlobalSearchView: View {
                 AppColors.background.ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    SearchBarView(text: $viewModel.query, placeholder: "Search messages, chats, contacts")
+                    SearchBarView(text: $viewModel.query, placeholder: L10n.searchPlaceholder)
                         .padding(.vertical, AppSpacing.sm)
                         .onChange(of: viewModel.query) { _, _ in
                             viewModel.search()
@@ -26,7 +26,7 @@ struct GlobalSearchView: View {
                             Image(systemName: "magnifyingglass")
                                 .font(.system(size: 48))
                                 .foregroundStyle(AppColors.textTertiary)
-                            Text("Search for messages, people, and groups")
+                            Text(L10n.searchEmptyHint)
                                 .font(AppTypography.subheadline)
                                 .foregroundStyle(AppColors.textSecondary)
                                 .multilineTextAlignment(.center)
@@ -56,8 +56,9 @@ struct GlobalSearchView: View {
                     }
                 }
             }
-            .navigationTitle("Search")
+            .navigationTitle(L10n.searchTitle)
             .navigationBarTitleDisplayMode(.large)
+            .glassNavigationBar()
         }
     }
 

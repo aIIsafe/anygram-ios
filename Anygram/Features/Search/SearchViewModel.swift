@@ -42,10 +42,10 @@ extension SearchResultType: CaseIterable {
 
     var title: String {
         switch self {
-        case .chat: return "Chats"
-        case .message: return "Messages"
-        case .contact: return "Contacts"
-        case .group: return "Groups"
+        case .chat: return L10n.chatsTitle
+        case .message: return L10n.messagesSection
+        case .contact: return L10n.contactsTitle
+        case .group: return L10n.groups
         }
     }
 }

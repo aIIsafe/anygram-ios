@@ -51,15 +51,15 @@ struct ProfileView: View {
                     .padding(.top, AppSpacing.lg)
 
                     HStack(spacing: AppSpacing.md) {
-                        profileActionButton(icon: "message.fill", title: "Message") {}
-                        profileActionButton(icon: "phone.fill", title: "Call") {}
-                        profileActionButton(icon: "video.fill", title: "Video") {}
-                        profileActionButton(icon: "ellipsis", title: "More") {}
+                        profileActionButton(icon: "message.fill", title: L10n.messagePlaceholder) {}
+                        profileActionButton(icon: "phone.fill", title: L10n.tabCalls) {}
+                        profileActionButton(icon: "video.fill", title: L10n.videos) {}
+                        profileActionButton(icon: "ellipsis", title: L10n.other) {}
                     }
                     .padding(.horizontal, AppSpacing.md)
 
                     VStack(spacing: 0) {
-                        SettingsRowView(icon: "bell.fill", title: "Notifications", subtitle: profile.notificationEnabled ? "Enabled" : "Disabled", showChevron: true)
+                        SettingsRowView(icon: "bell.fill", title: L10n.notifications, subtitle: profile.notificationEnabled ? L10n.connected : L10n.disconnected, showChevron: true)
                         SettingsRowView(icon: "lock.fill", title: "Encryption", subtitle: profile.encryptionEnabled ? "End-to-end encrypted" : "Not encrypted", iconColor: AppColors.online)
                     }
                     .background(AppColors.secondaryBackground)
@@ -94,7 +94,7 @@ struct ProfileView: View {
                         Button { Task { await viewModel.toggleMute() } } label: {
                             SettingsRowView(
                                 icon: "speaker.slash.fill",
-                                title: profile.isMuted ? "Unmute" : "Mute",
+                                title: profile.isMuted ? L10n.unmute : L10n.mute,
                                 iconColor: AppColors.muted,
                                 showChevron: false
                             )
@@ -110,7 +110,7 @@ struct ProfileView: View {
                         Button(role: .destructive) { Task { await viewModel.deleteChat(); dismiss() } } label: {
                             SettingsRowView(
                                 icon: "trash.fill",
-                                title: "Delete Chat",
+                                title: L10n.delete,
                                 iconColor: AppColors.destructive,
                                 showChevron: false
                             )
@@ -126,7 +126,8 @@ struct ProfileView: View {
             .padding(.bottom, AppSpacing.xxl)
         }
         .background(AppColors.background)
-        .navigationTitle("Profile")
+        .navigationTitle(L10n.profile)
+        .glassNavigationBar()
         .navigationBarTitleDisplayMode(.inline)
         .task { await viewModel.load() }
     }

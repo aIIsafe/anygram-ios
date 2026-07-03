@@ -30,7 +30,7 @@ struct ChatsListView: View {
                                     HStack {
                                         Image(systemName: "archivebox.fill")
                                             .foregroundStyle(AppColors.accent)
-                                        Text("Archived Chats")
+                                        Text(L10n.archivedChats)
                                             .foregroundStyle(AppColors.textPrimary)
                                         Spacer()
                                         Text("\(viewModel.archivedChats.count)")
@@ -47,7 +47,7 @@ struct ChatsListView: View {
                                 }
                             } header: {
                                 if !viewModel.pinnedChats.isEmpty {
-                                    sectionHeader("Pinned")
+                                    sectionHeader(L10n.pinned)
                                 }
                             }
 
@@ -57,7 +57,7 @@ struct ChatsListView: View {
                                 }
                             } header: {
                                 HStack {
-                                    Text("All Chats")
+                                    Text(L10n.allChats)
                                     Spacer()
                                     Button {
                                         withAnimation(AppAnimation.standard) {}
@@ -65,7 +65,7 @@ struct ChatsListView: View {
                                         Image(systemName: "folder")
                                             .foregroundStyle(AppColors.accent)
                                     }
-                                    .accessibilityLabel("Chat folders")
+                                    .accessibilityLabel(L10n.chatFolders)
                                 }
                                 .font(AppTypography.captionBold)
                                 .foregroundStyle(AppColors.textSecondary)
@@ -77,12 +77,13 @@ struct ChatsListView: View {
                     }
                 }
             }
-            .navigationTitle(viewModel.showArchived ? "Archived" : "Chats")
+            .navigationTitle(viewModel.showArchived ? L10n.archivedTitle : L10n.chatsTitle)
             .navigationBarTitleDisplayMode(.large)
+            .glassNavigationBar()
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     if viewModel.showArchived {
-                        Button("Back") {
+                        Button(L10n.back) {
                             viewModel.showArchived = false
                         }
                     }
@@ -93,7 +94,7 @@ struct ChatsListView: View {
                         Image(systemName: "square.and.pencil")
                             .foregroundStyle(AppColors.accent)
                     }
-                    .accessibilityLabel("New message")
+                    .accessibilityLabel(L10n.newMessage)
                 }
             }
             .navigationDestination(item: $selectedChat) { chat in
@@ -116,7 +117,7 @@ struct ChatsListView: View {
             Button {
                 Task { await viewModel.togglePin(chat) }
             } label: {
-                Label(chat.isPinned ? "Unpin" : "Pin", systemImage: "pin")
+                Label(chat.isPinned ? L10n.unpin : L10n.pin, systemImage: "pin")
             }
             .tint(AppColors.accent)
         }
@@ -124,33 +125,33 @@ struct ChatsListView: View {
             Button(role: .destructive) {
                 Task { await viewModel.deleteChat(chat) }
             } label: {
-                Label("Delete", systemImage: "trash")
+                Label(L10n.delete, systemImage: "trash")
             }
             Button {
                 Task { await viewModel.archive(chat) }
             } label: {
-                Label("Archive", systemImage: "archivebox")
+                Label(L10n.archive, systemImage: "archivebox")
             }
             .tint(AppColors.tertiaryBackground)
             Button {
                 Task { await viewModel.toggleMute(chat) }
             } label: {
-                Label(chat.isMuted ? "Unmute" : "Mute", systemImage: chat.isMuted ? "speaker" : "speaker.slash")
+                Label(chat.isMuted ? L10n.unmute : L10n.mute, systemImage: chat.isMuted ? "speaker" : "speaker.slash")
             }
             .tint(AppColors.muted)
         }
         .contextMenu {
             Button { Task { await viewModel.togglePin(chat) } } label: {
-                Label(chat.isPinned ? "Unpin" : "Pin", systemImage: "pin")
+                Label(chat.isPinned ? L10n.unpin : L10n.pin, systemImage: "pin")
             }
             Button { Task { await viewModel.toggleMute(chat) } } label: {
-                Label(chat.isMuted ? "Unmute" : "Mute", systemImage: "speaker.slash")
+                Label(chat.isMuted ? L10n.unmute : L10n.mute, systemImage: "speaker.slash")
             }
             Button { Task { await viewModel.archive(chat) } } label: {
-                Label("Archive", systemImage: "archivebox")
+                Label(L10n.archive, systemImage: "archivebox")
             }
             Button(role: .destructive) { Task { await viewModel.deleteChat(chat) } } label: {
-                Label("Delete", systemImage: "trash")
+                Label(L10n.delete, systemImage: "trash")
             }
         }
     }

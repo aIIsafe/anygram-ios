@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SearchBarView: View {
     @Binding var text: String
-    var placeholder: String = "Search"
+    var placeholder: String = L10n.search
 
     var body: some View {
         HStack(spacing: AppSpacing.xs) {
@@ -19,12 +19,11 @@ struct SearchBarView: View {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(AppColors.textSecondary)
                 }
-                .accessibilityLabel("Clear search")
+                .accessibilityLabel(L10n.clearSearch)
             }
         }
         .padding(AppSpacing.xs)
-        .background(AppColors.tertiaryBackground)
-        .clipShape(RoundedRectangle(cornerRadius: AppRadius.medium))
+        .liquidGlass(cornerRadius: AppRadius.medium)
         .padding(.horizontal, AppSpacing.md)
     }
 }
@@ -59,6 +58,7 @@ struct LoadingView: View {
         ProgressView()
             .tint(AppColors.accent)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityLabel(L10n.loading)
     }
 }
 
@@ -107,6 +107,6 @@ struct TypingIndicatorView: View {
             }
         }
         .onAppear { animating = true }
-        .accessibilityLabel("Typing")
+        .accessibilityLabel(L10n.typing)
     }
 }

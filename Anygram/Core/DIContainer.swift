@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import SwiftUI
 
@@ -6,6 +7,8 @@ import SwiftUI
 public final class DIContainer: ObservableObject {
     public static let shared = DIContainer()
 
+    public let authService: AuthServiceProtocol
+    public let networkService: TelegramNetworkService
     public let chatService: ChatServiceProtocol
     public let userService: UserServiceProtocol
     public let callsService: CallsServiceProtocol
@@ -17,6 +20,7 @@ public final class DIContainer: ObservableObject {
     public let imageCache: ImageCacheProtocol
     public let networkConfigurationProvider: NetworkConfigurationProvider
 
+    public let authRepository: AuthRepository
     public let chatRepository: ChatRepository
     public let userRepository: UserRepository
     public let callsRepository: CallsRepository
@@ -24,6 +28,10 @@ public final class DIContainer: ObservableObject {
     public let settingsRepository: SettingsRepository
     public let profileRepository: ProfileRepository
     public let proxyRepository: ProxyRepository
+
+    @Published public private(set) var isAuthenticated = false
+
+    private var cancellables = Set<AnyCancellable>()
 
     public init(useMockServices: Bool = true) {
         let imageCache = MemoryImageCache()
@@ -33,7 +41,13 @@ public final class DIContainer: ObservableObject {
         self.proxyService = proxyService
         self.networkConfigurationProvider = NetworkConfigurationProvider(proxyService: proxyService)
 
-        if useMockServices {
+        let authService = TDLibAuthService()
+        self.authService = authService
+        self.networkService = TelegramNetworkService(proxyService: proxyService, authService: authService)
+        self.authRepository = AuthRepository(authService: authService, networkService: networkService)
+
+        let useMocks = useMockServices || !authService.isAuthenticated
+        if useMocks {
             let chatService = MockChatService()
             let userService = MockUserService()
             self.chatService = chatService
@@ -62,9 +76,25 @@ public final class DIContainer: ObservableObject {
         self.settingsRepository = SettingsRepository(settingsService: settingsService)
         self.profileRepository = ProfileRepository(profileService: profileService, mediaService: mediaService)
         self.proxyRepository = ProxyRepository(proxyService: proxyService)
+
+        isAuthenticated = authService.isAuthenticated
+        authService.authorizationStatePublisher
+            .receive(on: DispatchQueue.main)
+            .map { state in
+                if case .ready = state { return true }
+                return false
+            }
+            .sink { [weak self] authenticated in
+                self?.isAuthenticated = authenticated
+            }
+            .store(in: &cancellables)
     }
 
     public func bootstrap() async {
         await proxyRepository.initializeOnFirstLaunch()
+    }
+
+    public func logout() async {
+        try? await authRepository.logout()
     }
 }

@@ -2,10 +2,11 @@ import SwiftUI
 
 struct SettingsRootView: View {
     @StateObject private var viewModel: SettingsViewModel
-    private let container: DIContainer
+    @EnvironmentObject private var container: DIContainer
+    private let diContainer: DIContainer
 
     init(container: DIContainer) {
-        self.container = container
+        self.diContainer = container
         _viewModel = StateObject(wrappedValue: SettingsViewModel(
             settingsRepository: container.settingsRepository,
             proxyRepository: container.proxyRepository
@@ -20,9 +21,9 @@ struct SettingsRootView: View {
                         EditProfileSettingsView()
                     } label: {
                         HStack(spacing: AppSpacing.sm) {
-                            AvatarView(name: "You", colorHex: "#3390EC", size: 60)
+                            AvatarView(name: L10n.yourName, colorHex: "#3390EC", size: 60)
                             VStack(alignment: .leading) {
-                                Text("Your Name")
+                                Text(L10n.yourName)
                                     .font(AppTypography.headline)
                                     .foregroundStyle(AppColors.textPrimary)
                                 Text("@your_username")
@@ -34,68 +35,79 @@ struct SettingsRootView: View {
                                 .foregroundStyle(AppColors.textTertiary)
                         }
                         .padding(AppSpacing.md)
-                        .background(AppColors.secondaryBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.medium))
                     }
+                    .glassCard()
                     .buttonStyle(.plain)
                     .padding(.horizontal, AppSpacing.md)
 
                     settingsSection(title: nil, rows: [
-                        SettingsNavRow(icon: "bookmark.fill", title: "Saved Messages", color: AppColors.accent) {
-                            SavedMessagesView(container: container)
+                        SettingsNavRow(icon: "bookmark.fill", title: L10n.savedMessages, color: AppColors.accent) {
+                            SavedMessagesView(container: diContainer)
                         },
-                        SettingsNavRow(icon: "iphone", title: "Devices", color: AppColors.accent) {
-                            DevicesSettingsView(container: container)
+                        SettingsNavRow(icon: "iphone", title: L10n.devices, color: AppColors.accent) {
+                            DevicesSettingsView(container: diContainer)
                         }
                     ])
 
-                    settingsSection(title: "Settings", rows: [
-                        SettingsNavRow(icon: "lock.fill", title: "Privacy and Security", color: AppColors.online) {
+                    settingsSection(title: L10n.settingsSection, rows: [
+                        SettingsNavRow(icon: "lock.fill", title: L10n.privacySecurity, color: AppColors.online) {
                             PrivacySettingsView()
                         },
-                        SettingsNavRow(icon: "bell.fill", title: "Notifications", color: AppColors.destructive) {
-                            NotificationsSettingsView(container: container)
+                        SettingsNavRow(icon: "bell.fill", title: L10n.notifications, color: AppColors.destructive) {
+                            NotificationsSettingsView(container: diContainer)
                         },
-                        SettingsNavRow(icon: "arrow.up.arrow.down", title: "Data and Storage", color: AppColors.accent) {
-                            DataStorageSettingsView(container: container)
+                        SettingsNavRow(icon: "arrow.up.arrow.down", title: L10n.dataStorage, color: AppColors.accent) {
+                            DataStorageSettingsView(container: diContainer)
                         },
-                        SettingsNavRow(icon: "paintbrush.fill", title: "Appearance", color: AppColors.premium) {
-                            AppearanceSettingsView(container: container)
+                        SettingsNavRow(icon: "paintbrush.fill", title: L10n.appearance, color: AppColors.premium) {
+                            AppearanceSettingsView(container: diContainer)
                         },
-                        SettingsNavRow(icon: "globe", title: "Language", color: AppColors.accentSecondary) {
-                            LanguageSettingsView(container: container)
+                        SettingsNavRow(icon: "globe", title: L10n.language, color: AppColors.accentSecondary) {
+                            LanguageSettingsView(container: diContainer)
                         },
-                        SettingsNavRow(icon: "folder.fill", title: "Chat Folders", color: AppColors.accent) {
-                            FoldersSettingsView(container: container)
+                        SettingsNavRow(icon: "folder.fill", title: L10n.chatFoldersSettings, color: AppColors.accent) {
+                            FoldersSettingsView(container: diContainer)
                         }
                     ])
 
                     settingsSection(title: nil, rows: [
-                        SettingsNavRow(icon: "star.fill", title: "Telegram Premium", color: AppColors.premium) {
+                        SettingsNavRow(icon: "star.fill", title: L10n.premium, color: AppColors.premium) {
                             PremiumSettingsView()
                         },
-                        SettingsNavRow(icon: "externaldrive.fill", title: "Storage Usage", color: AppColors.accent) {
+                        SettingsNavRow(icon: "externaldrive.fill", title: L10n.storageUsage, color: AppColors.accent) {
                             StorageUsageSettingsView()
                         },
-                        SettingsNavRow(icon: "network", title: "Proxy Settings", color: AppColors.online) {
-                            ProxySettingsView(container: container)
+                        SettingsNavRow(icon: "network", title: L10n.proxySettings, color: AppColors.online) {
+                            ProxySettingsView(container: diContainer)
                         },
-                        SettingsNavRow(icon: "wallet.pass.fill", title: "Wallet", color: AppColors.accentSecondary) {
+                        SettingsNavRow(icon: "wallet.pass.fill", title: L10n.wallet, color: AppColors.accentSecondary) {
                             WalletSettingsView()
                         }
                     ])
 
                     settingsSection(title: nil, rows: [
-                        SettingsNavRow(icon: "info.circle.fill", title: "About Anygram", color: AppColors.textSecondary) {
+                        SettingsNavRow(icon: "info.circle.fill", title: L10n.about, color: AppColors.textSecondary) {
                             AboutSettingsView()
                         }
                     ])
+
+                    Button(role: .destructive) {
+                        Task { await container.logout() }
+                    } label: {
+                        Text(L10n.authLogout)
+                            .font(AppTypography.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, AppSpacing.sm)
+                    }
+                    .glassCard()
+                    .padding(.horizontal, AppSpacing.md)
                 }
                 .padding(.vertical, AppSpacing.md)
             }
             .background(AppColors.background)
-            .navigationTitle("Settings")
+            .navigationTitle(L10n.settingsTitle)
             .navigationBarTitleDisplayMode(.large)
+            .glassNavigationBar()
             .task { await viewModel.load() }
         }
     }
@@ -122,8 +134,7 @@ struct SettingsRootView: View {
                     }
                 }
             }
-            .background(AppColors.secondaryBackground)
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.medium))
+            .glassCard()
             .padding(.horizontal, AppSpacing.md)
         }
     }
@@ -144,21 +155,22 @@ private struct SettingsNavRow {
 }
 
 struct EditProfileSettingsView: View {
-    @State private var name = "Your Name"
+    @State private var name = L10n.yourName
     @State private var username = "your_username"
     @State private var bio = ""
 
     var body: some View {
         Form {
-            Section("Profile") {
-                TextField("Name", text: $name)
-                TextField("Username", text: $username)
-                TextField("Bio", text: $bio, axis: .vertical)
+            Section(L10n.profile) {
+                TextField(L10n.name, text: $name)
+                TextField(L10n.username, text: $username)
+                TextField(L10n.bio, text: $bio, axis: .vertical)
             }
         }
         .scrollContentBackground(.hidden)
         .background(AppColors.background)
-        .navigationTitle("Edit Profile")
+        .navigationTitle(L10n.editProfile)
+        .glassNavigationBar()
     }
 }
 
@@ -166,9 +178,9 @@ struct SavedMessagesView: View {
     init(container: DIContainer) {}
 
     var body: some View {
-        ContentUnavailableView("Saved Messages", systemImage: "bookmark.fill", description: Text("Messages you save will appear here"))
+        ContentUnavailableView(L10n.savedMessages, systemImage: "bookmark.fill", description: Text(L10n.savedMessagesEmpty))
             .background(AppColors.background)
-            .navigationTitle("Saved Messages")
+            .navigationTitle(L10n.savedMessages)
     }
 }
 
@@ -187,7 +199,7 @@ struct DevicesSettingsView: View {
                         Text(device.name)
                             .font(AppTypography.headline)
                         if device.isCurrent {
-                            Text("This device")
+                            Text(L10n.thisDevice)
                                 .font(AppTypography.caption)
                                 .foregroundStyle(AppColors.accent)
                         }
@@ -204,7 +216,7 @@ struct DevicesSettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(AppColors.background)
-        .navigationTitle("Devices")
+        .navigationTitle(L10n.devices)
         .task {
             devices = (try? await DIContainer.shared.settingsRepository.fetchDevices()) ?? []
         }
@@ -218,20 +230,20 @@ struct PrivacySettingsView: View {
 
     var body: some View {
         Form {
-            Section("Privacy") {
-                Toggle("Phone Number", isOn: $phoneVisible)
-                Toggle("Last Seen", isOn: $lastSeenVisible)
-                Toggle("Groups", isOn: $groupsVisible)
+            Section(L10n.privacy) {
+                Toggle(L10n.phoneNumber, isOn: $phoneVisible)
+                Toggle(L10n.lastSeen, isOn: $lastSeenVisible)
+                Toggle(L10n.groups, isOn: $groupsVisible)
             }
-            Section("Security") {
-                NavigationLink("Two-Step Verification") { Text("Two-Step Verification").navigationTitle("2FA") }
-                NavigationLink("Passcode Lock") { Text("Passcode Lock").navigationTitle("Passcode") }
-                NavigationLink("Blocked Users") { Text("Blocked Users").navigationTitle("Blocked") }
+            Section(L10n.security) {
+                NavigationLink(L10n.twoStepVerification) { Text(L10n.twoStepVerification).navigationTitle("2FA") }
+                NavigationLink(L10n.passcodeLock) { Text(L10n.passcodeLock).navigationTitle(L10n.passcodeLock) }
+                NavigationLink(L10n.blockedUsers) { Text(L10n.blockedUsers).navigationTitle(L10n.blockedUsers) }
             }
         }
         .scrollContentBackground(.hidden)
         .background(AppColors.background)
-        .navigationTitle("Privacy and Security")
+        .navigationTitle(L10n.privacySecurity)
     }
 }
 
@@ -242,19 +254,19 @@ struct NotificationsSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Messages") {
-                Toggle("Message Preview", isOn: $settings.notifications.messagePreview)
-                Toggle("Sound", isOn: $settings.notifications.soundEnabled)
-                Toggle("Badge", isOn: $settings.notifications.badgeEnabled)
+            Section(L10n.messagesSection) {
+                Toggle(L10n.messagePreview, isOn: $settings.notifications.messagePreview)
+                Toggle(L10n.sound, isOn: $settings.notifications.soundEnabled)
+                Toggle(L10n.badge, isOn: $settings.notifications.badgeEnabled)
             }
-            Section("Groups & Channels") {
-                Toggle("Group Notifications", isOn: $settings.notifications.groupNotifications)
-                Toggle("Channel Notifications", isOn: $settings.notifications.channelNotifications)
+            Section(L10n.groupsChannels) {
+                Toggle(L10n.groupNotifications, isOn: $settings.notifications.groupNotifications)
+                Toggle(L10n.channelNotifications, isOn: $settings.notifications.channelNotifications)
             }
         }
         .scrollContentBackground(.hidden)
         .background(AppColors.background)
-        .navigationTitle("Notifications")
+        .navigationTitle(L10n.notifications)
         .task {
             settings = (try? await DIContainer.shared.settingsRepository.fetchSettings()) ?? AppSettings()
         }
@@ -268,17 +280,17 @@ struct DataStorageSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Auto-Download") {
-                Toggle("Auto-Download Media", isOn: $autoDownload)
+            Section(L10n.autoDownload) {
+                Toggle(L10n.autoDownloadMedia, isOn: $autoDownload)
             }
-            Section("Storage") {
-                NavigationLink("Clear Cache") { Text("Cache cleared").navigationTitle("Clear Cache") }
-                NavigationLink("Network Usage") { Text("Network stats").navigationTitle("Network Usage") }
+            Section(L10n.storage) {
+                NavigationLink(L10n.clearCache) { Text(L10n.clearCache).navigationTitle(L10n.clearCache) }
+                NavigationLink(L10n.networkUsage) { Text(L10n.networkUsage).navigationTitle(L10n.networkUsage) }
             }
         }
         .scrollContentBackground(.hidden)
         .background(AppColors.background)
-        .navigationTitle("Data and Storage")
+        .navigationTitle(L10n.dataStorage)
     }
 }
 
@@ -289,30 +301,30 @@ struct AppearanceSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Theme") {
-                Picker("Theme", selection: $appearance.theme) {
-                    Text("System").tag(Appearance.Theme.system)
-                    Text("Light").tag(Appearance.Theme.light)
-                    Text("Dark").tag(Appearance.Theme.dark)
+            Section(L10n.theme) {
+                Picker(L10n.theme, selection: $appearance.theme) {
+                    Text(L10n.themeSystem).tag(Appearance.Theme.system)
+                    Text(L10n.themeLight).tag(Appearance.Theme.light)
+                    Text(L10n.themeDark).tag(Appearance.Theme.dark)
                 }
-                Toggle("Large Emoji", isOn: $appearance.useLargeEmoji)
-                Toggle("Animate Stickers", isOn: $appearance.animateStickers)
+                Toggle(L10n.largeEmoji, isOn: $appearance.useLargeEmoji)
+                Toggle(L10n.animateStickers, isOn: $appearance.animateStickers)
             }
         }
         .scrollContentBackground(.hidden)
         .background(AppColors.background)
-        .navigationTitle("Appearance")
+        .navigationTitle(L10n.appearance)
     }
 }
 
 struct LanguageSettingsView: View {
-    @State private var language = "English"
+    @State private var language = "Русский"
 
     init(container: DIContainer) {}
 
     var body: some View {
         List {
-            ForEach(["English", "Russian", "Spanish", "French", "German", "Arabic", "Chinese"], id: \.self) { lang in
+            ForEach(["Русский", "English", "Español", "Français", "Deutsch", "العربية", "中文"], id: \.self) { lang in
                 HStack {
                     Text(lang)
                     Spacer()
@@ -328,7 +340,7 @@ struct LanguageSettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(AppColors.background)
-        .navigationTitle("Language")
+        .navigationTitle(L10n.language)
     }
 }
 
@@ -345,7 +357,7 @@ struct FoldersSettingsView: View {
                         .foregroundStyle(AppColors.accent)
                     Text(folder.name)
                     Spacer()
-                    Text("\(folder.chatIDs.count) chats")
+                    Text(L10n.settingsChatsCount(folder.chatIDs.count))
                         .foregroundStyle(AppColors.textSecondary)
                         .font(AppTypography.caption)
                 }
@@ -354,7 +366,7 @@ struct FoldersSettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(AppColors.background)
-        .navigationTitle("Chat Folders")
+        .navigationTitle(L10n.chatFoldersSettings)
         .task {
             folders = (try? await DIContainer.shared.settingsRepository.fetchFolders()) ?? []
         }
@@ -367,47 +379,47 @@ struct PremiumSettingsView: View {
             Image(systemName: "star.fill")
                 .font(.system(size: 64))
                 .foregroundStyle(AppColors.premium)
-            Text("Anygram Premium")
+            Text(L10n.premiumTitle)
                 .font(AppTypography.largeTitle)
-            Text("Exclusive features, faster downloads, and more.")
+            Text(L10n.premiumDescription)
                 .font(AppTypography.body)
                 .foregroundStyle(AppColors.textSecondary)
                 .multilineTextAlignment(.center)
-            PrimaryButton(title: "Subscribe") {}
+            PrimaryButton(title: L10n.subscribe) {}
                 .padding(.horizontal, AppSpacing.xl)
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(AppColors.background)
-        .navigationTitle("Premium")
+        .navigationTitle(L10n.premium)
     }
 }
 
 struct StorageUsageSettingsView: View {
     var body: some View {
         List {
-            Section("Storage") {
-                HStack { Text("Photos"); Spacer(); Text("1.2 GB").foregroundStyle(AppColors.textSecondary) }
-                HStack { Text("Videos"); Spacer(); Text("3.4 GB").foregroundStyle(AppColors.textSecondary) }
-                HStack { Text("Documents"); Spacer(); Text("256 MB").foregroundStyle(AppColors.textSecondary) }
-                HStack { Text("Other"); Spacer(); Text("128 MB").foregroundStyle(AppColors.textSecondary) }
+            Section(L10n.storage) {
+                HStack { Text(L10n.photos); Spacer(); Text("1.2 GB").foregroundStyle(AppColors.textSecondary) }
+                HStack { Text(L10n.videos); Spacer(); Text("3.4 GB").foregroundStyle(AppColors.textSecondary) }
+                HStack { Text(L10n.documents); Spacer(); Text("256 MB").foregroundStyle(AppColors.textSecondary) }
+                HStack { Text(L10n.other); Spacer(); Text("128 MB").foregroundStyle(AppColors.textSecondary) }
             }
             Section {
-                Button("Clear Cache") {}
+                Button(L10n.clearCache) {}
                     .foregroundStyle(AppColors.destructive)
             }
         }
         .scrollContentBackground(.hidden)
         .background(AppColors.background)
-        .navigationTitle("Storage Usage")
+        .navigationTitle(L10n.storageUsage)
     }
 }
 
 struct WalletSettingsView: View {
     var body: some View {
-        ContentUnavailableView("Wallet", systemImage: "wallet.pass.fill", description: Text("Crypto wallet integration coming soon"))
+        ContentUnavailableView(L10n.wallet, systemImage: "wallet.pass.fill", description: Text(L10n.walletEmpty))
             .background(AppColors.background)
-            .navigationTitle("Wallet")
+            .navigationTitle(L10n.wallet)
     }
 }
 
@@ -415,14 +427,14 @@ struct AboutSettingsView: View {
     var body: some View {
         List {
             Section {
-                HStack { Text("Version"); Spacer(); Text("1.0.0").foregroundStyle(AppColors.textSecondary) }
-                NavigationLink("Terms of Service") { Text("Terms of Service").padding() }
-                NavigationLink("Privacy Policy") { Text("Privacy Policy").padding() }
+                HStack { Text(L10n.version); Spacer(); Text("1.0.0").foregroundStyle(AppColors.textSecondary) }
+                NavigationLink(L10n.termsOfService) { Text(L10n.termsOfService).padding() }
+                NavigationLink(L10n.privacyPolicy) { Text(L10n.privacyPolicy).padding() }
             }
         }
         .scrollContentBackground(.hidden)
         .background(AppColors.background)
-        .navigationTitle("About Anygram")
+        .navigationTitle(L10n.about)
     }
 }
 
@@ -446,24 +458,24 @@ struct ProxySettingsView: View {
                     Text(viewModel.connectionStatusText)
                         .font(AppTypography.headline)
                     Spacer()
-                    Button("Reconnect") {
+                    Button(L10n.reconnect) {
                         Task { await viewModel.reconnect() }
                     }
                     .font(AppTypography.caption)
                     .foregroundStyle(AppColors.accent)
                 }
             } header: {
-                Text("Connection Status")
+                Text(L10n.connectionStatus)
             }
 
-            Section("Proxies") {
+            Section(L10n.proxies) {
                 ForEach(viewModel.proxies) { proxy in
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             Text(proxy.label)
                                 .font(AppTypography.headline)
                             if proxy.isDefault {
-                                Text("Default")
+                                Text(L10n.defaultLabel)
                                     .font(AppTypography.caption)
                                     .foregroundStyle(AppColors.accent)
                             }
@@ -483,7 +495,7 @@ struct ProxySettingsView: View {
                             Button(role: .destructive) {
                                 Task { await viewModel.removeProxy(proxy) }
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                Label(L10n.delete, systemImage: "trash")
                             }
                         }
                     }
@@ -494,12 +506,12 @@ struct ProxySettingsView: View {
                 Button {
                     viewModel.showAddProxy = true
                 } label: {
-                    Label("Add Proxy", systemImage: "plus.circle.fill")
+                    Label(L10n.addProxy, systemImage: "plus.circle.fill")
                         .foregroundStyle(AppColors.accent)
                 }
             }
 
-            Section("Default Proxy") {
+            Section(L10n.defaultProxy) {
                 Text(Proxy.builtInDefault.link)
                     .font(AppTypography.caption)
                     .foregroundStyle(AppColors.textSecondary)
@@ -507,26 +519,27 @@ struct ProxySettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(AppColors.background)
-        .navigationTitle("Proxy Settings")
+        .navigationTitle(L10n.proxySettings)
         .sheet(isPresented: $viewModel.showAddProxy) {
             NavigationStack {
                 Form {
-                    TextField("Server", text: $viewModel.newServer)
-                    TextField("Port", text: $viewModel.newPort)
+                    TextField(L10n.server, text: $viewModel.newServer)
+                    TextField(L10n.port, text: $viewModel.newPort)
                         .keyboardType(.numberPad)
-                    TextField("Secret", text: $viewModel.newSecret)
+                    TextField(L10n.secret, text: $viewModel.newSecret)
                 }
-                .navigationTitle("Add Proxy")
+                .navigationTitle(L10n.addProxy)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { viewModel.showAddProxy = false }
+                        Button(L10n.cancel) { viewModel.showAddProxy = false }
                     }
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Add") { Task { await viewModel.addProxy() } }
+                        Button(L10n.add) { Task { await viewModel.addProxy() } }
                     }
                 }
             }
             .presentationDetents([.medium])
+            .glassSheetBackground()
         }
         .task { await viewModel.load() }
     }

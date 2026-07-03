@@ -5,7 +5,7 @@ enum AccessibilityLabels {
     static func contact(_ user: User) -> String {
         var parts = [user.name]
         if user.isOnline {
-            parts.append("online")
+            parts.append(L10n.online)
         } else if let lastSeen = user.lastSeen {
             parts.append(lastSeen.lastSeenFormatted)
         }
@@ -19,16 +19,16 @@ enum AccessibilityLabels {
         if chat.unreadCount > 0 {
             parts.append("\(chat.unreadCount) unread")
         }
-        if chat.isMuted { parts.append("muted") }
-        if chat.isPinned { parts.append("pinned") }
+        if chat.isMuted { parts.append(L10n.mute) }
+        if chat.isPinned { parts.append(L10n.pin) }
         return parts.joined(separator: ", ")
     }
 
     static func message(_ message: Message) -> String {
         let direction = message.isOutgoing ? "You" : "Contact"
         var text = "\(direction): \(message.text)"
-        if message.isEdited { text += ", edited" }
-        if message.isForwarded { text += ", forwarded" }
+        if message.isEdited { text += ", \(L10n.edited)" }
+        if message.isForwarded { text += ", \(L10n.forward)" }
         return text
     }
 

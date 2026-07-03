@@ -30,7 +30,7 @@ struct ChatDetailView: View {
                                 if viewModel.unreadSeparatorIndex == viewModel.messages.firstIndex(of: message) {
                                     HStack {
                                         Rectangle().fill(AppColors.accent).frame(height: 1)
-                                        Text("Unread Messages")
+                                        Text(L10n.unreadMessages)
                                             .font(AppTypography.caption)
                                             .foregroundStyle(AppColors.accent)
                                         Rectangle().fill(AppColors.accent).frame(height: 1)
@@ -46,7 +46,7 @@ struct ChatDetailView: View {
                         if viewModel.isTyping {
                             HStack {
                                 TypingIndicatorView()
-                                Text("typing...")
+                                Text(L10n.typing + "...")
                                     .font(AppTypography.caption)
                                     .foregroundStyle(AppColors.textSecondary)
                                 Spacer()
@@ -70,7 +70,7 @@ struct ChatDetailView: View {
                 HStack {
                     Rectangle().fill(AppColors.accent).frame(width: 3)
                     VStack(alignment: .leading) {
-                        Text("Reply to")
+                        Text(L10n.replyTo)
                             .font(AppTypography.caption)
                             .foregroundStyle(AppColors.accent)
                         Text(reply.text)
@@ -85,7 +85,7 @@ struct ChatDetailView: View {
                     }
                 }
                 .padding(AppSpacing.sm)
-                .background(AppColors.secondaryBackground)
+                .liquidGlass(cornerRadius: AppRadius.small)
             }
 
             HStack(spacing: AppSpacing.sm) {
@@ -93,13 +93,12 @@ struct ChatDetailView: View {
                     Image(systemName: "paperclip")
                         .foregroundStyle(AppColors.textSecondary)
                 }
-                TextField("Message", text: $viewModel.inputText, axis: .vertical)
+                TextField(L10n.messagePlaceholder, text: $viewModel.inputText, axis: .vertical)
                     .lineLimit(1...5)
                     .focused($isInputFocused)
                     .padding(.horizontal, AppSpacing.sm)
                     .padding(.vertical, AppSpacing.xs)
-                    .background(AppColors.tertiaryBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.large))
+                    .liquidGlass(cornerRadius: AppRadius.large)
                 Button {
                     Task { await viewModel.sendMessage() }
                 } label: {
@@ -109,11 +108,12 @@ struct ChatDetailView: View {
                 }
             }
             .padding(AppSpacing.sm)
-            .background(AppColors.secondaryBackground)
+            .liquidGlass(cornerRadius: 0)
         }
         .background(AppColors.background)
         .navigationTitle(chat.title)
         .navigationBarTitleDisplayMode(.inline)
+        .glassNavigationBar()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink {
@@ -153,19 +153,19 @@ struct ChatDetailView: View {
         )
         .contextMenu {
             Button { viewModel.replyToMessage = message } label: {
-                Label("Reply", systemImage: "arrowshape.turn.up.left")
+                Label(L10n.reply, systemImage: "arrowshape.turn.up.left")
             }
             Button { Task { await viewModel.addReaction("👍", to: message) } } label: {
-                Label("React", systemImage: "face.smiling")
+                Label(L10n.react, systemImage: "face.smiling")
             }
             Button { viewModel.toggleSelection(message) } label: {
-                Label("Select", systemImage: "checkmark.circle")
+                Label(L10n.select, systemImage: "checkmark.circle")
             }
             Button {} label: {
-                Label("Forward", systemImage: "arrowshape.turn.up.right")
+                Label(L10n.forward, systemImage: "arrowshape.turn.up.right")
             }
             Button {} label: {
-                Label("Copy", systemImage: "doc.on.doc")
+                Label(L10n.copy, systemImage: "doc.on.doc")
             }
         }
     }

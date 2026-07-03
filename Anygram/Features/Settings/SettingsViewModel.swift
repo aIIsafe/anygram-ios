@@ -81,9 +81,9 @@ final class ProxySettingsViewModel: ObservableObject {
 
     var connectionStatusText: String {
         switch connectionState {
-        case .connected: return "Connected"
-        case .connecting: return "Connecting..."
-        case .disconnected: return "Disconnected"
+        case .connected: return L10n.connected
+        case .connecting: return L10n.connecting
+        case .disconnected: return L10n.disconnected
         }
     }
 

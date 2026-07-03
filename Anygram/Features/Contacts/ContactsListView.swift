@@ -17,7 +17,7 @@ struct ContactsListView: View {
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                            SearchBarView(text: $viewModel.searchText, placeholder: "Search contacts")
+                            SearchBarView(text: $viewModel.searchText, placeholder: L10n.searchContacts)
 
                             Button {} label: {
                                 HStack {
@@ -26,7 +26,7 @@ struct ContactsListView: View {
                                         .frame(width: 48, height: 48)
                                         .background(AppColors.accent)
                                         .clipShape(Circle())
-                                    Text("Invite Friends")
+                                    Text(L10n.inviteFriends)
                                         .font(AppTypography.headline)
                                         .foregroundStyle(AppColors.accent)
                                     Spacer()
@@ -41,7 +41,7 @@ struct ContactsListView: View {
                                         contactRow(user)
                                     }
                                 } header: {
-                                    sectionHeader("Pinned")
+                                    sectionHeader(L10n.pinned)
                                 }
                             }
 
@@ -58,8 +58,9 @@ struct ContactsListView: View {
                     }
                 }
             }
-            .navigationTitle("Contacts")
+            .navigationTitle(L10n.contactsTitle)
             .navigationBarTitleDisplayMode(.large)
+            .glassNavigationBar()
             .task { await viewModel.load() }
         }
     }
@@ -74,21 +75,21 @@ struct ContactsListView: View {
         .buttonStyle(.plain)
         .swipeActions(edge: .leading) {
             Button { Task { await viewModel.togglePin(user) } } label: {
-                Label(user.isPinned ? "Unpin" : "Pin", systemImage: "pin")
+                Label(user.isPinned ? L10n.unpin : L10n.pin, systemImage: "pin")
             }
             .tint(AppColors.accent)
         }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) { Task { await viewModel.deleteContact(user) } } label: {
-                Label("Delete", systemImage: "trash")
+                Label(L10n.delete, systemImage: "trash")
             }
         }
         .contextMenu {
             Button { Task { await viewModel.togglePin(user) } } label: {
-                Label(user.isPinned ? "Unpin" : "Pin", systemImage: "pin")
+                Label(user.isPinned ? L10n.unpin : L10n.pin, systemImage: "pin")
             }
             Button(role: .destructive) { Task { await viewModel.deleteContact(user) } } label: {
-                Label("Delete", systemImage: "trash")
+                Label(L10n.delete, systemImage: "trash")
             }
         }
     }

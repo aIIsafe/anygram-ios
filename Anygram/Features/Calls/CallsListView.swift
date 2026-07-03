@@ -14,11 +14,13 @@ struct CallsListView: View {
 
                 VStack(spacing: 0) {
                     Picker("Filter", selection: $viewModel.selectedSegment) {
-                        Text("All").tag(0)
-                        Text("Missed").tag(1)
+                        Text(L10n.callsAll).tag(0)
+                        Text(L10n.callsMissed).tag(1)
                     }
                     .pickerStyle(.segmented)
                     .padding(AppSpacing.md)
+                    .liquidGlass(cornerRadius: AppRadius.medium)
+                    .padding(.horizontal, AppSpacing.md)
                     .onChange(of: viewModel.selectedSegment) { _, _ in
                         Task { await viewModel.load() }
                     }
@@ -26,7 +28,7 @@ struct CallsListView: View {
                     if viewModel.isLoading && viewModel.calls.isEmpty {
                         LoadingView()
                     } else if viewModel.calls.isEmpty {
-                        ContentUnavailableView("No Calls", systemImage: "phone", description: Text("Your call history will appear here"))
+                        ContentUnavailableView(L10n.noCalls, systemImage: "phone", description: Text(L10n.noCallsDescription))
                     } else {
                         ScrollView {
                             LazyVStack(spacing: 0) {
@@ -36,15 +38,15 @@ struct CallsListView: View {
                                             Button(role: .destructive) {
                                                 Task { await viewModel.deleteCall(call) }
                                             } label: {
-                                                Label("Delete", systemImage: "trash")
+                                                Label(L10n.delete, systemImage: "trash")
                                             }
                                         }
                                         .contextMenu {
                                             Button { Task { await viewModel.deleteCall(call) } } label: {
-                                                Label("Delete", systemImage: "trash")
+                                                Label(L10n.delete, systemImage: "trash")
                                             }
                                             Button {} label: {
-                                                Label("Call Back", systemImage: "phone")
+                                                Label(L10n.callBack, systemImage: "phone")
                                             }
                                         }
                                 }
@@ -63,10 +65,11 @@ struct CallsListView: View {
                         .shadow(color: AppColors.accent.opacity(0.4), radius: 8, y: 4)
                 }
                 .padding(AppSpacing.lg)
-                .accessibilityLabel("New call")
+                .accessibilityLabel(L10n.newCall)
             }
-            .navigationTitle("Calls")
+            .navigationTitle(L10n.callsTitle)
             .navigationBarTitleDisplayMode(.large)
+            .glassNavigationBar()
             .task { await viewModel.load() }
         }
     }

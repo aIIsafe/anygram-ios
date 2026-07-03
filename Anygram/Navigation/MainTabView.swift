@@ -11,11 +11,11 @@ enum AppTab: Int, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .contacts: return "Contacts"
-        case .calls: return "Calls"
-        case .chats: return "Chats"
-        case .settings: return "Settings"
-        case .search: return "Search"
+        case .contacts: return L10n.tabContacts
+        case .calls: return L10n.tabCalls
+        case .chats: return L10n.tabChats
+        case .settings: return L10n.tabSettings
+        case .search: return L10n.tabSearch
         }
     }
 
@@ -38,7 +38,7 @@ enum AppTab: Int, CaseIterable, Identifiable {
     }
 }
 
-/// Telegram-style tab bar with blur background and badge support.
+/// Telegram-style tab bar with liquid glass bottom panel.
 struct MainTabView: View {
     @State private var selectedTab: AppTab = .chats
     @Namespace private var tabAnimation
@@ -66,7 +66,7 @@ struct MainTabView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.bottom, 56)
+            .padding(.bottom, 72)
 
             tabBar
         }
@@ -110,8 +110,8 @@ struct MainTabView: View {
                     .padding(.vertical, AppSpacing.xs)
                     .background {
                         if selectedTab == tab {
-                            RoundedRectangle(cornerRadius: AppRadius.medium)
-                                .fill(AppColors.accent.opacity(0.15))
+                            RoundedRectangle(cornerRadius: AppRadius.medium, style: .continuous)
+                                .fill(AppColors.accent.opacity(0.12))
                                 .matchedGeometryEffect(id: "tabHighlight", in: tabAnimation)
                         }
                     }
@@ -121,11 +121,8 @@ struct MainTabView: View {
                 .accessibilityAddTraits(selectedTab == tab ? .isSelected : [])
             }
         }
-        .padding(.horizontal, AppSpacing.xs)
-        .padding(.bottom, AppSpacing.xxs)
-        .background {
-            BlurBackgroundView()
-                .ignoresSafeArea(edges: .bottom)
-        }
+        .padding(.horizontal, AppSpacing.sm)
+        .padding(.vertical, AppSpacing.xs)
+        .glassTabBar()
     }
 }

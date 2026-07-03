@@ -43,7 +43,7 @@ struct MessageBubbleView: View {
                 HStack(spacing: 4) {
                     Image(systemName: "arrowshape.turn.up.right.fill")
                         .font(.system(size: 10))
-                    Text("Forwarded from \(from)")
+                    Text(String(format: String(localized: "chats.forwardedFrom"), from))
                         .font(AppTypography.caption)
                 }
                 .foregroundStyle(AppColors.accent)
@@ -72,7 +72,7 @@ struct MessageBubbleView: View {
                             .font(.system(size: 11))
                             .foregroundStyle(AppColors.textTertiary)
                         if message.isEdited {
-                            Text("edited")
+                            Text(L10n.edited)
                                 .font(.system(size: 11))
                                 .foregroundStyle(AppColors.textTertiary)
                         }
@@ -279,9 +279,9 @@ struct ContactRowView: View {
     }
 
     private var statusText: String {
-        if user.isOnline { return "online" }
+        if user.isOnline { return L10n.online }
         if let lastSeen = user.lastSeen { return lastSeen.lastSeenFormatted }
-        return user.status.isEmpty ? "offline" : user.status
+        return user.status.isEmpty ? L10n.offline : user.status
     }
 }
 
@@ -331,7 +331,7 @@ struct CallRowView: View {
     }
 
     private var subtitle: String {
-        if call.direction == .missed { return "Missed" }
+        if call.direction == .missed { return L10n.missed }
         return Date.formatDuration(call.duration)
     }
 }
