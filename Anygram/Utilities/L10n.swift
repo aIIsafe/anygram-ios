@@ -171,6 +171,7 @@ enum L10n {
     static let authWaitingTdlib = String(localized: "auth.waitingTdlib")
     static let authSendingPhone = String(localized: "auth.sendingPhone")
     static let authAuthorizationFailed = String(localized: "auth.authorizationFailed")
+    static let authInvalidApiId = String(localized: "auth.invalidApiId")
 
     static func authFloodWait(_ seconds: Int) -> String {
         String(localized: "auth.floodWait \(seconds)")

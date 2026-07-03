@@ -278,7 +278,8 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
             }
             throw error
         } catch {
-            AppDebugLogger.shared.log("setAuthenticationPhoneNumber error: \(error.localizedDescription)", category: .ERROR)
+            let rawMessage = Self.rawTDLibErrorMessage(from: error)
+            AppDebugLogger.shared.log("setAuthenticationPhoneNumber Telegram error: \(rawMessage)", category: .ERROR)
             throw mapTDLibError(error)
         }
         AuthConnectionStatus.postProgress(step: 7, total: 7, label: "done — wait for waitCode update")
@@ -415,7 +416,7 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
 
         AppDebugLogger.shared.log("setTdlibParameters called", category: .TDLIB)
         AppDebugLogger.shared.log(
-            "calling setTdlibParameters apiId=\(TelegramAPIConfiguration.apiId) db=\(TelegramAPIConfiguration.databaseDirectoryPath) lang=\(TelegramAPIConfiguration.systemLanguageCode)",
+            "setTdlibParameters apiId=\(TelegramAPIConfiguration.apiId) apiHash=\(TelegramAPIConfiguration.maskedApiHash) db=\(TelegramAPIConfiguration.databaseDirectoryPath) lang=\(TelegramAPIConfiguration.systemLanguageCode)",
             category: .TDLIB
         )
         let start = Date()
@@ -445,8 +446,9 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
             stateLock.lock()
             parametersApplied = false
             stateLock.unlock()
-            AppDebugLogger.shared.log("setTdlibParameters FAILED: \(error.localizedDescription)", category: .ERROR)
-            authLogger.error("setTdlibParameters failed: \(error.localizedDescription, privacy: .public)")
+            let rawMessage = Self.rawTDLibErrorMessage(from: error)
+            AppDebugLogger.shared.log("setTdlibParameters FAILED: \(rawMessage)", category: .ERROR)
+            authLogger.error("setTdlibParameters failed: \(rawMessage, privacy: .public)")
             currentState = .closed
             onStateChange?(currentState)
         }
@@ -546,14 +548,24 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         return "+\(digits)"
     }
 
+    private static func rawTDLibErrorMessage(from error: Swift.Error) -> String {
+        if let message = (error as? LocalizedError)?.errorDescription, !message.isEmpty {
+            return message
+        }
+        return error.localizedDescription
+    }
+
     private func mapTDLibError(
         _ error: Swift.Error,
         invalidCode: Bool = false,
         invalidPassword: Bool = false
     ) -> AuthError {
-        let message = error.localizedDescription
+        let message = Self.rawTDLibErrorMessage(from: error)
         let lowered = message.lowercased()
 
+        if lowered.contains("api_id_invalid") {
+            return .tdlibError("\(L10n.authInvalidApiId) (\(message))")
+        }
         if lowered.contains("flood") {
             let seconds = Self.extractFloodWaitSeconds(from: message) ?? 60
             return .floodWait(seconds)
@@ -586,6 +598,9 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
 
     private static func russianErrorMessage(from message: String) -> String {
         let lowered = message.lowercased()
+        if lowered.contains("api_id_invalid") {
+            return "\(L10n.authInvalidApiId) (\(message))"
+        }
         if lowered.contains("phone number invalid") || lowered.contains("phone_number_invalid") {
             return L10n.authInvalidPhone
         }

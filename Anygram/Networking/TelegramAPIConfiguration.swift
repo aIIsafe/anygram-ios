@@ -3,8 +3,8 @@ import Foundation
 /// Telegram API credentials and TDLib bootstrap configuration.
 ///
 /// Obtain credentials at https://my.telegram.org/apps
-/// Set environment variables `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` for local builds,
-/// or replace the defaults below before release.
+/// Defaults match BetterTG `Secret.swift` (api_id 34053256) — verified working with TDLibKit on iOS.
+/// Set environment variables `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` to override for local builds.
 ///
 /// TDLib SPM setup (optional, ~300 MB download):
 /// 1. Xcode → Project → Package Dependencies → Add `https://github.com/Swiftgram/TDLibKit`
@@ -17,11 +17,18 @@ enum TelegramAPIConfiguration {
            let value = Int32(env), value > 0 {
             return value
         }
-        return 24053256
+        return 34_053_256
     }
 
     static var apiHash: String {
         ProcessInfo.processInfo.environment["TELEGRAM_API_HASH"] ?? "bc8984a70877b5768a5a6a80222da985"
+    }
+
+    /// Masked api_hash for debug logs: first 4 + last 3 characters.
+    static var maskedApiHash: String {
+        let hash = apiHash
+        guard hash.count > 7 else { return "***" }
+        return "\(hash.prefix(4))...\(hash.suffix(3))"
     }
 
     static var isConfigured: Bool {

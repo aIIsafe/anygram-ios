@@ -901,6 +901,12 @@
         "ru" : { "stringUnit" : { "state" : "translated", "value" : "Ошибка авторизации. Перезапустите приложение и попробуйте снова." } }
       }
     },
+    "auth.invalidApiId" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Invalid API ID. Check the app configuration." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Неверный API ID. Проверьте конфигурацию приложения." } }
+      }
+    },
     "auth.floodWait %lld" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Too many attempts. Try again in %lld seconds." } },
