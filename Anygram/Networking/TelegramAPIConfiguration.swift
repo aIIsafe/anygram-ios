@@ -3,7 +3,8 @@ import Foundation
 /// Telegram API credentials and TDLib bootstrap configuration.
 ///
 /// Obtain credentials at https://my.telegram.org/apps
-/// iOS uses BetterTG `Secret.swift` (api_id 34053256); Flutter sibling uses 24053256 separately.
+/// Production pair matches Flutter Anygram (24053256 + hash registered on my.telegram.org).
+/// BetterTG Secret (34053256) shares the hash but is not registered — causes API_ID_INVALID.
 /// Set environment variables `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` to override for local builds.
 ///
 /// TDLib SPM setup (optional, ~300 MB download):
@@ -13,7 +14,7 @@ import Foundation
 /// 4. Build — `TDLibAuthService` automatically uses the real client via `#if canImport(TDLibKit)`
 enum TelegramAPIConfiguration {
     /// Bump when api_id/hash or TDLib layout changes — triggers Documents/td wipe on next launch.
-    static let tdlibStorageSchemaVersion = 4
+    static let tdlibStorageSchemaVersion = 5
 
     private static let storedVersionKey = "anygram.tdlib.storageVersion"
     private static let storedApiIdKey = "anygram.tdlib.lastApiId"
@@ -23,7 +24,7 @@ enum TelegramAPIConfiguration {
            let value = Int32(env), value > 0 {
             return value
         }
-        return 34_053_256
+        return 24_053_256
     }
 
     static var apiHash: String {
