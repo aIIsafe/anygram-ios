@@ -298,7 +298,7 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         do {
             _ = try await client.setTdlibParameters(
                 apiHash: TelegramAPIConfiguration.apiHash,
-                apiId: TelegramAPIConfiguration.apiId,
+                apiId: Int(TelegramAPIConfiguration.apiId),
                 applicationVersion: TelegramAPIConfiguration.applicationVersion,
                 databaseDirectory: TelegramAPIConfiguration.databaseDirectoryPath,
                 databaseEncryptionKey: Data(),
