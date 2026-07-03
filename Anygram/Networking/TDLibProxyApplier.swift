@@ -51,8 +51,13 @@ enum TDLibProxyApplier {
                 appliedProxyID = activeProxy.id
                 lock.unlock()
                 return
+            } catch let authError as AuthError {
+                lastError = authError
+                if attempt < maxAttempts {
+                    try? await Task.sleep(nanoseconds: retryDelayNanoseconds)
+                }
             } catch {
-                lastError = mapProxyError(error)
+                lastError = .proxyConnectionFailed
                 if attempt < maxAttempts {
                     try? await Task.sleep(nanoseconds: retryDelayNanoseconds)
                 }
@@ -66,13 +71,6 @@ enum TDLibProxyApplier {
         lock.lock()
         appliedProxyID = nil
         lock.unlock()
-    }
-
-    private static func mapProxyError(_ error: any Error) -> AuthError {
-        if let authError = error as? AuthError {
-            return authError
-        }
-        return .proxyConnectionFailed
     }
 }
 #endif
