@@ -19,6 +19,10 @@ final class TDLibAccessGate: @unchecked Sendable {
     }
 
     var canProcessChatUpdates: Bool {
+        areParametersApplied
+    }
+
+    var areParametersApplied: Bool {
         lock.lock()
         defer { lock.unlock() }
         return parametersApplied

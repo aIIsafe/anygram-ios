@@ -66,6 +66,8 @@ public final class TDLibSession: @unchecked Sendable {
     /// BetterTG: create client + register update handler before any TDLib calls.
     @discardableResult
     public func ensureClient(updateHandler: @escaping (Data, TDLibClient) -> Void) -> TDLibClient {
+        TelegramAPIConfiguration.performStorageMigrationIfNeeded()
+
         lock.lock()
         if primaryUpdateHandler == nil {
             primaryUpdateHandler = updateHandler

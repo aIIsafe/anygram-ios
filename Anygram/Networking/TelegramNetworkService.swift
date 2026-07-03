@@ -29,13 +29,32 @@ public final class TelegramNetworkService: @unchecked Sendable {
         lock.lock()
         let alreadyPrepared = loginSessionPrepared
         lock.unlock()
-        guard !alreadyPrepared else {
-            AppDebugLogger.shared.log("bootstrapForLogin: session already prepared, skip initialize", category: .NETWORK)
+
+        #if canImport(TDLibKit)
+        let parametersReady = TDLibAccessGate.shared.areParametersApplied && TDLibSession.shared.isReady
+        #else
+        let parametersReady = true
+        #endif
+
+        if alreadyPrepared && parametersReady {
+            AppDebugLogger.shared.log("bootstrapForLogin: session already prepared, parameters verified", category: .NETWORK)
             return
         }
 
-        AppDebugLogger.shared.log("bootstrapForLogin: authService.initialize()", category: .AUTH)
+        if alreadyPrepared && !parametersReady {
+            AppDebugLogger.shared.log("bootstrapForLogin: session prepared but TDLib params missing — re-initialize", category: .NETWORK)
+        } else {
+            AppDebugLogger.shared.log("bootstrapForLogin: authService.initialize()", category: .AUTH)
+        }
+
         try await authService.initialize()
+
+        #if canImport(TDLibKit)
+        guard TDLibAccessGate.shared.areParametersApplied else {
+            AppDebugLogger.shared.log("bootstrapForLogin: initialize finished without setTdlibParameters", category: .ERROR)
+            throw AuthError.stillStarting
+        }
+        #endif
 
         lock.lock()
         loginSessionPrepared = true

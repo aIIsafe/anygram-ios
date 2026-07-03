@@ -49,7 +49,11 @@ public final class AuthRepository: @unchecked Sendable {
     private func shouldResetSession(after error: Error) -> Bool {
         if case AuthError.stillStarting = error { return true }
         if case AuthError.networkUnavailable = error { return true }
-        if case AuthError.tdlibError(let message) = error, message.contains("TIMEOUT") { return true }
+        if case AuthError.tdlibError(let message) = error {
+            let lowered = message.lowercased()
+            if message.contains("TIMEOUT") { return true }
+            if lowered.contains("api_id_invalid") { return true }
+        }
         return false
     }
 

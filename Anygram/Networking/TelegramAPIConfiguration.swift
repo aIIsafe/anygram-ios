@@ -3,7 +3,7 @@ import Foundation
 /// Telegram API credentials and TDLib bootstrap configuration.
 ///
 /// Obtain credentials at https://my.telegram.org/apps
-/// Defaults match BetterTG `Secret.swift` (api_id 34053256) — verified working with TDLibKit on iOS.
+/// Defaults match Anygram Flutter `keys.dart` and BetterTG (api_id 24053256).
 /// Set environment variables `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` to override for local builds.
 ///
 /// TDLib SPM setup (optional, ~300 MB download):
@@ -12,12 +12,18 @@ import Foundation
 /// 3. Add linker flags: `-lc++`, `-lz` (Build Settings → Other Linker Flags)
 /// 4. Build — `TDLibAuthService` automatically uses the real client via `#if canImport(TDLibKit)`
 enum TelegramAPIConfiguration {
+    /// Bump when api_id/hash or TDLib layout changes — triggers Documents/td wipe on next launch.
+    static let tdlibStorageSchemaVersion = 3
+
+    private static let storedVersionKey = "anygram.tdlib.storageVersion"
+    private static let storedApiIdKey = "anygram.tdlib.lastApiId"
+
     static var apiId: Int32 {
         if let env = ProcessInfo.processInfo.environment["TELEGRAM_API_ID"],
            let value = Int32(env), value > 0 {
             return value
         }
-        return 34_053_256
+        return 24_053_256
     }
 
     static var apiHash: String {
@@ -53,5 +59,38 @@ enum TelegramAPIConfiguration {
         let root = base.appendingPathComponent("td", isDirectory: true)
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         return root
+    }
+
+    /// Wipe stale TDLib DB when schema/api_id changes or after API_ID_INVALID recovery.
+    static func performStorageMigrationIfNeeded() {
+        let defaults = UserDefaults.standard
+        let storedVersion = defaults.integer(forKey: storedVersionKey)
+        let storedApiId = defaults.integer(forKey: storedApiIdKey)
+        let currentApiId = Int(apiId)
+
+        let needsWipe = storedVersion != tdlibStorageSchemaVersion
+            || storedApiId != currentApiId
+            || storedApiId <= 0
+            || currentApiId <= 0
+
+        if needsWipe {
+            wipeTdStorage(reason: "migration v\(storedVersion)→v\(tdlibStorageSchemaVersion) apiId \(storedApiId)→\(currentApiId)")
+            defaults.set(tdlibStorageSchemaVersion, forKey: storedVersionKey)
+            defaults.set(currentApiId, forKey: storedApiIdKey)
+        }
+    }
+
+    /// Recovery wipe after API_ID_INVALID — does not update version keys (client will re-bootstrap).
+    static func wipeTdStorageForRecovery() {
+        wipeTdStorage(reason: "API_ID_INVALID recovery")
+    }
+
+    static func wipeTdStorage(reason: String) {
+        let root = tdStorageRoot
+        if FileManager.default.fileExists(atPath: root.path) {
+            try? FileManager.default.removeItem(at: root)
+        }
+        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        AppDebugLogger.shared.log("wiped TDLib storage (\(reason)) at \(root.path)", category: .TDLIB)
     }
 }
