@@ -1,10 +1,10 @@
-import Combine
+﻿import Combine
 import Foundation
 
 /// In-memory mock implementation of call history.
 public final class MockCallsService: CallsServiceProtocol, @unchecked Sendable {
     private var calls: [Call]
-    private let callsSubject = CurrentValueSubject<[Call], Never>([])
+    private let callsSubject: CurrentValueSubject<[Call], Never>
     private let lock = NSLock()
 
     public init() {
@@ -36,3 +36,4 @@ public final class MockCallsService: CallsServiceProtocol, @unchecked Sendable {
         callsSubject.eraseToAnyPublisher()
     }
 }
+

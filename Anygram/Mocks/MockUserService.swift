@@ -1,10 +1,10 @@
-import Combine
+﻿import Combine
 import Foundation
 
 /// In-memory mock implementation of user and contact operations.
 public final class MockUserService: UserServiceProtocol, @unchecked Sendable {
     private var contacts: [User]
-    private let contactsSubject = CurrentValueSubject<[User], Never>([])
+    private let contactsSubject: CurrentValueSubject<[User], Never>
     private let lock = NSLock()
 
     public init() {
@@ -64,3 +64,4 @@ public final class MockUserService: UserServiceProtocol, @unchecked Sendable {
         contactsSubject.eraseToAnyPublisher()
     }
 }
+

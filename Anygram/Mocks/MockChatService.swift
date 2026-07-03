@@ -1,11 +1,11 @@
-import Combine
+﻿import Combine
 import Foundation
 
 /// In-memory mock implementation of chat operations.
 public final class MockChatService: ChatServiceProtocol, @unchecked Sendable {
     private var chats: [Chat]
     private var messagesByChat: [UUID: [Message]]
-    private let chatsSubject = CurrentValueSubject<[Chat], Never>([])
+    private let chatsSubject: CurrentValueSubject<[Chat], Never>
     private var typingSubjects: [UUID: PassthroughSubject<TypingStatus, Never>] = [:]
     private let lock = NSLock()
 
@@ -174,3 +174,4 @@ public final class MockChatService: ChatServiceProtocol, @unchecked Sendable {
 public enum MockServiceError: Error {
     case notFound
 }
+
