@@ -75,21 +75,14 @@ public final class TDLibSession: @unchecked Sendable {
         TDLibUpdateRouter.shared.route(data: data, client: client)
     }
 
-    /// BetterTG applies proxy and silences logs before auth parameters.
+    /// BetterTG silences logs on startup; proxy is applied explicitly during login.
     private func startBootstrap(client: TDLibClient) {
         bootstrapTask = Task {
-            do {
-                try? await client.setLogStream(logStream: .logStreamEmpty) { _ in }
-                try await TDLibProxyApplier.applyForcedProxy(client: client)
-            } catch let error as AuthError {
-                bootstrapError = error
-            } catch {
-                bootstrapError = .proxyConnectionFailed
-            }
+            try? await client.setLogStream(logStream: .logStreamEmpty) { _ in }
         }
     }
 
-    public func awaitBootstrap(timeout: TimeInterval = 60) async throws {
+    public func awaitBootstrap(timeout: TimeInterval = 10) async throws {
         let task = lock.withLock { bootstrapTask }
         guard let task else { return }
         try await AsyncTimeout.withTimeout(seconds: timeout, error: AuthError.stillStarting) {

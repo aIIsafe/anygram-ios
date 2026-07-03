@@ -5,6 +5,8 @@ import Foundation
 public final class TelegramNetworkService: @unchecked Sendable {
     private let proxyService: ProxyServiceProtocol
     private let authService: AuthServiceProtocol
+    private let lock = NSLock()
+    private var loginSessionPrepared = false
 
     public init(proxyService: ProxyServiceProtocol, authService: AuthServiceProtocol) {
         self.proxyService = proxyService
@@ -20,7 +22,26 @@ public final class TelegramNetworkService: @unchecked Sendable {
             ?? proxies.first
             ?? Proxy.builtInDefault
         await TDLibProxyBridge.shared.configure(proxy: active)
+
+        lock.lock()
+        let alreadyPrepared = loginSessionPrepared
+        lock.unlock()
+        guard !alreadyPrepared else { return }
+
         try await authService.initialize()
+
+        lock.lock()
+        loginSessionPrepared = true
+        lock.unlock()
+    }
+
+    public func resetLoginBootstrap() {
+        lock.lock()
+        loginSessionPrepared = false
+        lock.unlock()
+        #if canImport(TDLibKit)
+        TDLibProxyApplier.resetAppliedProxy()
+        #endif
     }
 
     public func applyActiveProxy() async throws {

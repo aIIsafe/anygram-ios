@@ -94,6 +94,14 @@ public final class PreferencesStorage: @unchecked Sendable {
             defaults.set(newValue?.uuidString, forKey: Keys.activeProxyID)
         }
     }
+
+    public func hasMigrationFlag(_ key: String) -> Bool {
+        defaults.bool(forKey: key)
+    }
+
+    public func setMigrationFlag(_ key: String) {
+        defaults.set(true, forKey: key)
+    }
 }
 
 /// Storage operation errors.

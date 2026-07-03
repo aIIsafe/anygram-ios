@@ -19,6 +19,7 @@ public final class DefaultProxyService: ProxyServiceProtocol, @unchecked Sendabl
     }
 
     public func initializeOnFirstLaunch() async {
+        migrateBuiltInProxy()
         if !preferences.hasLaunchedBefore {
             preferences.hasLaunchedBefore = true
             let defaultProxy = Proxy.builtInDefault
@@ -110,6 +111,38 @@ public final class DefaultProxyService: ProxyServiceProtocol, @unchecked Sendabl
     }
 
     // MARK: - Private
+
+    private static let builtInProxyMigrationKey = "anygram.proxyMigration.v2"
+
+    /// Replaces stored built-in proxy with the current default for existing installs.
+    private func migrateBuiltInProxy() {
+        guard !preferences.hasMigrationFlag(Self.builtInProxyMigrationKey) else { return }
+
+        try? storeProxySecret(Proxy.builtInDefault)
+
+        let activeID = preferences.activeProxyID
+        let storedIDs = preferences.loadProxyIDs()
+        let usesBuiltInID = storedIDs.contains(Proxy.builtInDefault.id)
+            || activeID == Proxy.builtInDefault.id
+
+        if usesBuiltInID || activeID == nil {
+            preferences.activeProxyID = Proxy.builtInDefault.id
+            preferences.saveProxyIDs([Proxy.builtInDefault.id])
+            var settings = preferences.loadSettings() ?? AppSettings()
+            settings.proxyEnabled = true
+            settings.activeProxyID = Proxy.builtInDefault.id
+            try? preferences.saveSettings(settings)
+        }
+
+        lock.lock()
+        if proxies.isEmpty || proxies.contains(where: { $0.id == Proxy.builtInDefault.id }) {
+            proxies = [Proxy.builtInDefault]
+            preferences.saveProxyIDs([Proxy.builtInDefault.id])
+        }
+        lock.unlock()
+
+        preferences.setMigrationFlag(Self.builtInProxyMigrationKey)
+    }
 
     private func loadProxiesFromStorage() async {
         lock.lock()

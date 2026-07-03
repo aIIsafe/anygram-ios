@@ -36,6 +36,5 @@ struct AuthFlowView: View {
             .animation(AppAnimation.standard, value: viewModel.step)
         }
         .telegramBackground()
-        .task { await viewModel.bootstrap() }
     }
 }

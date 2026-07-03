@@ -184,9 +184,13 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         _ = TDLibSession.shared.ensureClient { [weak self] data, client in
             self?.handleUpdate(data: data, client: client)
         }
-        try await TDLibSession.shared.awaitBootstrap(timeout: 60)
+        try await TDLibSession.shared.awaitBootstrap(timeout: 10)
+
+        guard let client = TDLibSession.shared.tdClient else { throw AuthError.notConfigured }
+        try await TDLibProxyApplier.applyForcedProxy(client: client)
+
         AuthConnectionStatus.post(.waitingTdlib)
-        try await waitForPhoneNumberState(timeout: 45)
+        try await waitForPhoneNumberState(timeout: 30)
         AuthConnectionStatus.post(.idle)
     }
 
@@ -198,7 +202,7 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
 
         try await TDLibProxyApplier.applyForcedProxy(client: client)
         AuthConnectionStatus.post(.waitingTdlib)
-        try await waitForPhoneNumberState(timeout: 30)
+        try await waitForPhoneNumberState(timeout: 15)
 
         AuthConnectionStatus.post(.sendingPhone)
         authLogger.info("setAuthenticationPhoneNumber \(normalized, privacy: .private)")

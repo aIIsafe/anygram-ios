@@ -78,21 +78,6 @@ final class AuthViewModel: ObservableObject {
         authRepository.isAuthenticated
     }
 
-    func bootstrap() async {
-        isLoading = true
-        errorMessage = nil
-        connectionPhase = .connectingProxy
-        defer {
-            isLoading = false
-            connectionPhase = .idle
-        }
-        do {
-            try await authRepository.bootstrap()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
     func submitPhone() async {
         guard !phoneLocal.filter(\.isNumber).isEmpty else {
             errorMessage = L10n.authInvalidPhone

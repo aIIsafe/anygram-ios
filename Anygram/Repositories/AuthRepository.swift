@@ -32,7 +32,13 @@ public final class AuthRepository: @unchecked Sendable {
     }
 
     public func submitPhoneNumber(_ phoneNumber: String) async throws {
-        try await authService.setPhoneNumber(phoneNumber)
+        do {
+            try await networkService.bootstrapForLogin()
+            try await authService.setPhoneNumber(phoneNumber)
+        } catch {
+            networkService.resetLoginBootstrap()
+            throw error
+        }
     }
 
     public func submitCode(_ code: String) async throws {
