@@ -87,63 +87,41 @@ jobs:
           if-no-files-found: error
 
   build-ipa-tdlib:
-    runs-on: macos-15
+    runs-on: macos-latest
     timeout-minutes: 90
-    continue-on-error: true
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Cache SwiftPM
+      - name: Cache SwiftPM and DerivedData
         uses: actions/cache@v4
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm
-            ~/Library/Developer/Xcode/DerivedData
-          key: ${{ runner.os }}-tdlib-spm-${{ hashFiles('project.yml') }}
+            ${{ runner.temp }}/DerivedData
+          key: ${{ runner.os }}-tdlib-${{ hashFiles('project.yml', 'ci/build-tdlib-ipa.sh') }}
           restore-keys: |
-            ${{ runner.os }}-tdlib-spm-
+            ${{ runner.os }}-tdlib-
 
       - name: Install XcodeGen
         run: brew install xcodegen
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Show Xcode version
+        run: xcodebuild -version
 
       - name: Generate Xcode project (TDLib)
         run: |
           echo "TDLib IPA: real Telegram auth via TDLibKit SPM (~300 MB first fetch)."
           xcodegen generate --spec project.yml
 
-      - name: Resolve Swift packages
+      - name: Build TDLib IPA
         run: |
-          xcodebuild -resolvePackageDependencies \
-            -project Anygram.xcodeproj \
-            -scheme Anygram
-
-      - name: Archive
-        run: |
-          xcodebuild archive \
-            -project Anygram.xcodeproj \
-            -scheme Anygram \
-            -configuration Release \
-            -archivePath $RUNNER_TEMP/Anygram.xcarchive \
-            -sdk iphoneos \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES
-
-      - name: Package TDLib IPA
-        run: |
-          set -e
-          APP_PATH=$(find "$RUNNER_TEMP/Anygram.xcarchive/Products" -name "*.app" | head -1)
-          if [ -z "$APP_PATH" ]; then
-            echo "No .app found in archive"
-            exit 1
-          fi
-          mkdir -p "$RUNNER_TEMP/Payload"
-          cp -r "$APP_PATH" "$RUNNER_TEMP/Payload/"
-          cd "$RUNNER_TEMP" && zip -r Anygram-tdlib.ipa Payload
-          ls -la "$RUNNER_TEMP/Anygram-tdlib.ipa"
+          chmod +x ci/build-tdlib-ipa.sh
+          ci/build-tdlib-ipa.sh
 
       - name: Upload TDLib IPA artifact
         uses: actions/upload-artifact@v4
@@ -151,3 +129,4 @@ jobs:
           name: Anygram-ipa-tdlib
           path: ${{ runner.temp }}/Anygram-tdlib.ipa
           if-no-files-found: error
+          retention-days: 14
