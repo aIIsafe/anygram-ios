@@ -27,7 +27,7 @@ public final class TDLibSession: @unchecked Sendable {
     private var bootstrapStarted = false
     private var bootstrapTask: Task<Void, Never>?
     private var bootstrapComplete = false
-    private var bootstrapWaiters: [CheckedContinuation<Void, Never>] = []
+    private var bootstrapWaiters: [CheckedContinuation<Void, Error>] = []
 
     private init() {}
 
@@ -117,7 +117,7 @@ public final class TDLibSession: @unchecked Sendable {
         lock.unlock()
 
         for waiter in waiters {
-            waiter.resume()
+            waiter.resume(throwing: AuthError.stillStarting as Error)
         }
 
         TDLibProxyApplier.resetAppliedProxy()
@@ -214,19 +214,16 @@ public final class TDLibSession: @unchecked Sendable {
 
         AppDebugLogger.shared.log("awaitBootstrap: waiting up to \(Int(timeout))s for waitPhoneNumber", category: .TDLIB)
         try await AsyncTimeout.withTimeout(seconds: timeout, error: AuthError.stillStarting) {
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                lock.lock()
-                if bootstrapComplete {
-                    lock.unlock()
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                self.lock.lock()
+                if self.bootstrapComplete {
+                    self.lock.unlock()
                     continuation.resume()
                     return
                 }
-                bootstrapWaiters.append(continuation)
-                lock.unlock()
+                self.bootstrapWaiters.append(continuation)
+                self.lock.unlock()
             }
-        }
-        guard isReady else {
-            throw AuthError.stillStarting
         }
         AppDebugLogger.shared.log("awaitBootstrap: done", category: .TDLIB)
     }
