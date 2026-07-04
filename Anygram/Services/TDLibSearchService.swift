@@ -16,19 +16,13 @@ public final class TDLibSearchService: SearchServiceProtocol, @unchecked Sendabl
         guard !trimmed.isEmpty else { return [] }
 
         async let chatResults = searchChats(query: trimmed, client: client)
-        async let messageResults = searchMessages(query: trimmed, client: client)
         async let contactResults = searchContacts(query: trimmed, client: client)
-        let combined = await chatResults + messageResults + contactResults
+        let combined = await chatResults + contactResults
         return combined.sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
     }
 
     private func searchChats(query: String, client: TDLibClient) async -> [SearchResult] {
-        let chatIds: [Int64]
-        if let ids = try? await client.searchChatsOnServer(query: query, limit: 20).chatIds {
-            chatIds = ids
-        } else if let ids = try? await client.searchChats(query: query, limit: 20).chatIds {
-            chatIds = ids
-        } else {
+        guard let chatIds = try? await client.searchChatsOnServer(query: query, limit: 20).chatIds else {
             return []
         }
         var results: [SearchResult] = []
@@ -57,36 +51,6 @@ public final class TDLibSearchService: SearchServiceProtocol, @unchecked Sendabl
         return results
     }
 
-    private func searchMessages(query: String, client: TDLibClient) async -> [SearchResult] {
-        guard let found = try? await client.searchMessages(
-            chatList: .chatListMain,
-            query: query,
-            offset: "",
-            limit: 20,
-            filter: nil,
-            minDate: 0,
-            maxDate: 0
-        ) else {
-            return []
-        }
-
-        var results: [SearchResult] = []
-        for tdMessage in found.messages ?? [] {
-            guard let tdChat = try? await client.getChat(chatId: tdMessage.chatId) else { continue }
-            let text = messageText(from: tdMessage.content)
-            results.append(SearchResult(
-                type: .message,
-                title: tdChat.title,
-                subtitle: text,
-                avatarColorHex: TelegramIdentity.colorHex(forTelegramId: tdMessage.chatId),
-                date: Date(timeIntervalSince1970: TimeInterval(tdMessage.date)),
-                chatID: TelegramIdentity.uuid(fromTelegramId: tdMessage.chatId),
-                messageID: TelegramIdentity.messageUUID(chatId: tdMessage.chatId, messageId: tdMessage.id)
-            ))
-        }
-        return results
-    }
-
     private func searchContacts(query: String, client: TDLibClient) async -> [SearchResult] {
         guard let userIds = try? await client.searchContacts(query: query, limit: 20).userIds else {
             return []
@@ -106,29 +70,14 @@ public final class TDLibSearchService: SearchServiceProtocol, @unchecked Sendabl
         return results
     }
 
-    private func messageText(from content: MessageContent) -> String {
-        switch content {
+    private func previewText(for message: TDLibKit.Message?) -> String {
+        guard let message else { return "" }
+        switch message.content {
         case .messageText(let value):
             return value.text.text
-        case .messagePhoto(let value):
-            return value.caption.text.isEmpty ? "📷 Photo" : value.caption.text
-        case .messageVideo(let value):
-            return value.caption.text.isEmpty ? "🎬 Video" : value.caption.text
-        case .messageVoiceNote:
-            return "🎤 Voice message"
-        case .messageSticker(let value):
-            return value.sticker.emoji
-        case .messageDocument(let value):
-            return value.caption.text.isEmpty ? "📎 Document" : value.caption.text
         default:
             return "Message"
         }
-    }
-
-    private func previewText(for message: TDLibKit.Message?) -> String {
-        guard let message else { return "" }
-        let text = messageText(from: message.content)
-        return text.isEmpty ? "New message" : text
     }
 
     private func mapTDLibUser(_ tdUser: TDLibKit.User) -> User {
