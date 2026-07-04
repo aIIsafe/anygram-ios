@@ -60,7 +60,7 @@ public final class DIContainer: ObservableObject {
         self.userService = MockUserService()
         #endif
 
-        self.callsService = MockCallsService()
+        self.callsService = TelegramCallsService()
         self.searchService = TelegramSearchService(
             chatService: chatService,
             userService: self.userService

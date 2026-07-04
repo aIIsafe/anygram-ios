@@ -54,10 +54,26 @@ final class ChatDetailViewModel: ObservableObject {
             refreshUnreadSeparator()
             simulateTyping()
         } catch {
+            AppDebugLogger.shared.log(
+                "ChatDetail load failed chat=\(chat.title): \(error.localizedDescription)",
+                category: .CHAT
+            )
             if messages.isEmpty {
-                errorMessage = error.localizedDescription
+                errorMessage = Self.userFacingError(error)
             }
         }
+    }
+
+    private static func userFacingError(_ error: Error) -> String {
+        #if canImport(TDLibKit)
+        if let tdError = error as? TDLibKit.Error {
+            return tdError.message
+        }
+        #endif
+        if let localized = error as? LocalizedError, let description = localized.errorDescription {
+            return description
+        }
+        return error.localizedDescription
     }
 
     func close() async {

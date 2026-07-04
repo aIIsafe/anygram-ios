@@ -942,6 +942,186 @@
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Sending phone number…" } },
         "ru" : { "stringUnit" : { "state" : "translated", "value" : "Отправка номера…" } }
       }
+    },
+    "common.unknownUser" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Unknown user" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Неизвестный пользователь" } }
+      }
+    },
+    "chat.loadFailed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Could not load messages" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Не удалось загрузить сообщения" } }
+      }
+    },
+    "chat.emptyTitle" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No messages yet" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Сообщений пока нет" } }
+      }
+    },
+    "chat.emptyDescription" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Send a message to start the conversation." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Отправьте сообщение, чтобы начать переписку." } }
+      }
+    },
+    "diagnostics.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Sync & Logs" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Синхронизация и логи" } }
+      }
+    },
+    "diagnostics.loaded" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Loaded successfully" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Загружено успешно" } }
+      }
+    },
+    "diagnostics.failed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Failed / not loaded" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Ошибки / не загружено" } }
+      }
+    },
+    "diagnostics.hints" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "What to fix" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Что исправить" } }
+      }
+    },
+    "diagnostics.logs" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Debug logs" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Отладочные логи" } }
+      }
+    },
+    "diagnostics.noLogs" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No entries" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Нет записей" } }
+      }
+    },
+    "diagnostics.clearLogs" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Clear logs" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Очистить логи" } }
+      }
+    },
+    "diagnostics.copyLogs" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Copy logs" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Копировать логи" } }
+      }
+    },
+    "diagnostics.refresh" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Refresh" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Обновить" } }
+      }
+    },
+    "diagnostics.auth" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Authorization" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Авторизация" } }
+      }
+    },
+    "diagnostics.authOk" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Signed in" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Вход выполнен" } }
+      }
+    },
+    "diagnostics.authFailed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Not signed in" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Не авторизован" } }
+      }
+    },
+    "diagnostics.tdlibReady" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Ready for API calls" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Готов к API-запросам" } }
+      }
+    },
+    "diagnostics.tdlibNotReady" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Not ready yet" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Ещё не готов" } }
+      }
+    },
+    "diagnostics.chats" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Chats" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Чаты" } }
+      }
+    },
+    "diagnostics.contacts" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Contacts" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Контакты" } }
+      }
+    },
+    "diagnostics.messages" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Messages" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Сообщения" } }
+      }
+    },
+    "diagnostics.calls" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Calls" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Звонки" } }
+      }
+    },
+    "diagnostics.callsEmpty" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No call history (empty is OK)" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "История звонков пуста (это нормально)" } }
+      }
+    },
+    "diagnostics.recentError" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recent error" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Недавняя ошибка" } }
+      }
+    },
+    "diagnostics.hintAuth" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Sign in again from the auth screen." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Войдите заново на экране авторизации." } }
+      }
+    },
+    "diagnostics.hintTdlib" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Wait for TDLib bootstrap or check proxy settings." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Дождитесь запуска TDLib или проверьте прокси." } }
+      }
+    },
+    "diagnostics.hintChats" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Pull to refresh chats or reopen the app." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Обновите список чатов или перезапустите приложение." } }
+      }
+    },
+    "diagnostics.hintEmptyChats" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Chats list is empty — check network and TDLib logs below." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Список чатов пуст — проверьте сеть и логи TDLib ниже." } }
+      }
+    },
+    "diagnostics.countFormat %lld" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%lld items" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "%lld шт." } }
+      }
+    },
+    "diagnostics.messagesPrefetch %lld" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Prefetch enabled for up to %lld chats" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Предзагрузка до %lld чатов" } }
+      }
     }
   },
   "version" : "1.0"

@@ -17,7 +17,10 @@ struct ChatDetailView: View {
                 LoadingView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if viewModel.messages.isEmpty, let error = viewModel.errorMessage {
-                ContentUnavailableView(L10n.chatsTitle, systemImage: "exclamationmark.triangle", description: Text(error))
+                ContentUnavailableView(L10n.chatLoadFailed, systemImage: "exclamationmark.triangle", description: Text(error))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if viewModel.messages.isEmpty {
+                ContentUnavailableView(L10n.chatEmptyTitle, systemImage: "message", description: Text(L10n.chatEmptyDescription))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
             ScrollViewReader { proxy in

@@ -5,11 +5,12 @@ import Foundation
 final class AppDebugLogger: ObservableObject {
     static let shared = AppDebugLogger()
 
-    enum Category: String, Sendable {
+    enum Category: String, Sendable, CaseIterable {
         case PROXY
         case TDLIB
         case AUTH
         case NETWORK
+        case CHAT
         case UI
         case ERROR
     }
@@ -57,6 +58,22 @@ final class AppDebugLogger: ObservableObject {
         lock.lock()
         defer { lock.unlock() }
         return lines.joined(separator: "\n")
+    }
+
+    func lines(for category: Category) -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        let tag = "[\(category.rawValue)]"
+        return lines.filter { $0.contains(tag) }
+    }
+
+    func recentErrors(_ count: Int = 20) -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return Array(
+            lines.filter { $0.contains("[ERROR]") || $0.contains("FAILED") || $0.contains("failed") }
+                .suffix(count)
+        )
     }
 
     func clear() {

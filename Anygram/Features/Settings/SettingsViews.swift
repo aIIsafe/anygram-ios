@@ -77,6 +77,9 @@ struct SettingsRootView: View {
                         },
                         SettingsNavRow(icon: "folder.fill", title: L10n.chatFoldersSettings, color: AppColors.accent) {
                             FoldersSettingsView(container: diContainer)
+                        },
+                        SettingsNavRow(icon: "ladybug.fill", title: L10n.diagnosticsTitle, color: AppColors.textSecondary) {
+                            SyncDiagnosticsView(container: diContainer)
                         }
                     ])
 

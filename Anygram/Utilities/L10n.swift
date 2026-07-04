@@ -185,4 +185,42 @@ enum L10n {
     static func settingsChatsCount(_ count: Int) -> String {
         String(localized: "settings.chatsCountFormat \(count)")
     }
+
+    static let unknownUser = String(localized: "common.unknownUser")
+    static let chatLoadFailed = String(localized: "chat.loadFailed")
+    static let chatEmptyTitle = String(localized: "chat.emptyTitle")
+    static let chatEmptyDescription = String(localized: "chat.emptyDescription")
+
+    static let diagnosticsTitle = String(localized: "diagnostics.title")
+    static let diagnosticsLoaded = String(localized: "diagnostics.loaded")
+    static let diagnosticsFailed = String(localized: "diagnostics.failed")
+    static let diagnosticsHints = String(localized: "diagnostics.hints")
+    static let diagnosticsLogs = String(localized: "diagnostics.logs")
+    static let diagnosticsNoLogs = String(localized: "diagnostics.noLogs")
+    static let diagnosticsClearLogs = String(localized: "diagnostics.clearLogs")
+    static let diagnosticsCopyLogs = String(localized: "diagnostics.copyLogs")
+    static let diagnosticsRefresh = String(localized: "diagnostics.refresh")
+    static let diagnosticsAuth = String(localized: "diagnostics.auth")
+    static let diagnosticsAuthOk = String(localized: "diagnostics.authOk")
+    static let diagnosticsAuthFailed = String(localized: "diagnostics.authFailed")
+    static let diagnosticsTdlibReady = String(localized: "diagnostics.tdlibReady")
+    static let diagnosticsTdlibNotReady = String(localized: "diagnostics.tdlibNotReady")
+    static let diagnosticsChats = String(localized: "diagnostics.chats")
+    static let diagnosticsContacts = String(localized: "diagnostics.contacts")
+    static let diagnosticsMessages = String(localized: "diagnostics.messages")
+    static let diagnosticsCalls = String(localized: "diagnostics.calls")
+    static let diagnosticsCallsEmpty = String(localized: "diagnostics.callsEmpty")
+    static let diagnosticsRecentError = String(localized: "diagnostics.recentError")
+    static let diagnosticsHintAuth = String(localized: "diagnostics.hintAuth")
+    static let diagnosticsHintTdlib = String(localized: "diagnostics.hintTdlib")
+    static let diagnosticsHintChats = String(localized: "diagnostics.hintChats")
+    static let diagnosticsHintEmptyChats = String(localized: "diagnostics.hintEmptyChats")
+
+    static func diagnosticsCountFormat(_ count: Int) -> String {
+        String(localized: "diagnostics.countFormat \(count)")
+    }
+
+    static func diagnosticsMessagesPrefetch(_ count: Int) -> String {
+        String(localized: "diagnostics.messagesPrefetch \(count)")
+    }
 }
