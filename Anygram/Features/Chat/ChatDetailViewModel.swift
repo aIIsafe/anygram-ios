@@ -6,6 +6,7 @@ final class ChatDetailViewModel: ObservableObject {
     @Published var chat: Chat
     @Published var inputText = ""
     @Published var isLoading = false
+    @Published var errorMessage: String?
     @Published var isTyping = false
     @Published var selectedMessageIDs: Set<UUID> = []
     @Published var replyToMessage: Message?

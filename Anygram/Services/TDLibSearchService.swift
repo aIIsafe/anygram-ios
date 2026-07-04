@@ -23,7 +23,12 @@ public final class TDLibSearchService: SearchServiceProtocol, @unchecked Sendabl
     }
 
     private func searchChats(query: String, client: TDLibClient) async -> [SearchResult] {
-        guard let chatIds = try? await client.searchChats(query: query, limit: 20).chatIds else {
+        let chatIds: [Int64]
+        if let ids = try? await client.searchChatsOnServer(query: query, limit: 20).chatIds {
+            chatIds = ids
+        } else if let ids = try? await client.searchChats(query: query, limit: 20).chatIds {
+            chatIds = ids
+        } else {
             return []
         }
         var results: [SearchResult] = []
@@ -83,11 +88,11 @@ public final class TDLibSearchService: SearchServiceProtocol, @unchecked Sendabl
     }
 
     private func searchContacts(query: String, client: TDLibClient) async -> [SearchResult] {
-        guard let users = try? await client.searchContacts(query: query, limit: 20).userIds else {
+        guard let userIds = try? await client.searchContacts(query: query, limit: 20).userIds else {
             return []
         }
         var results: [SearchResult] = []
-        for userId in users {
+        for userId in userIds {
             guard let tdUser = try? await client.getUser(userId: userId) else { continue }
             let user = mapTDLibUser(tdUser)
             results.append(SearchResult(

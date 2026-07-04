@@ -51,9 +51,7 @@ final class ChatsViewModel: ObservableObject {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            let fetched = try await AsyncTimeout.withTimeout(seconds: 30, error: URLError(.timedOut)) {
-                try await repository.fetchChats(includeArchived: true)
-            }
+            let fetched = try await repository.fetchChats(includeArchived: true)
             archivedChats = fetched.filter(\.isArchived)
             chats = fetched.filter { !$0.isArchived }
         } catch {
