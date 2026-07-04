@@ -4,7 +4,12 @@ import Foundation
 /// Contract for chat list and message operations.
 public protocol ChatServiceProtocol: Sendable {
     func fetchChats(includeArchived: Bool) async throws -> [Chat]
+    func cachedMessages(for chatID: UUID) -> [Message]
+    func prefetchMessages(for chatID: UUID) async
+    func openChat(_ chatID: UUID) async
+    func closeChat(_ chatID: UUID) async
     func fetchMessages(for chatID: UUID, page: Int, pageSize: Int) async throws -> [Message]
+    func observeMessages(for chatID: UUID) -> AnyPublisher<[Message], Never>
     func sendMessage(_ text: String, to chatID: UUID, replyTo: UUID?) async throws -> Message
     func deleteChat(_ chatID: UUID) async throws
     func togglePin(chatID: UUID) async throws -> Chat

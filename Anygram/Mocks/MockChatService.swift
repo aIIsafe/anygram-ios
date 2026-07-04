@@ -32,6 +32,20 @@ public final class MockChatService: ChatServiceProtocol, @unchecked Sendable {
         }
     }
 
+    public func cachedMessages(for chatID: UUID) -> [Message] {
+        lock.lock()
+        defer { lock.unlock() }
+        return messagesByChat[chatID] ?? []
+    }
+
+    public func prefetchMessages(for chatID: UUID) async {
+        _ = try? await fetchMessages(for: chatID, page: 0, pageSize: 30)
+    }
+
+    public func openChat(_ chatID: UUID) async {}
+
+    public func closeChat(_ chatID: UUID) async {}
+
     public func fetchMessages(for chatID: UUID, page: Int, pageSize: Int) async throws -> [Message] {
         lock.lock()
         defer { lock.unlock() }
@@ -46,6 +60,13 @@ public final class MockChatService: ChatServiceProtocol, @unchecked Sendable {
         let end = all.count - page * pageSize
         guard start < end else { return [] }
         return Array(all[start..<min(end, all.count)])
+    }
+
+    public func observeMessages(for chatID: UUID) -> AnyPublisher<[Message], Never> {
+        lock.lock()
+        let messages = messagesByChat[chatID] ?? []
+        lock.unlock()
+        return Just(messages).eraseToAnyPublisher()
     }
 
     public func sendMessage(_ text: String, to chatID: UUID, replyTo: UUID?) async throws -> Message {

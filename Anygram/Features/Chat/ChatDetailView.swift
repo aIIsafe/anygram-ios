@@ -16,6 +16,9 @@ struct ChatDetailView: View {
             if viewModel.isLoading && viewModel.messages.isEmpty {
                 LoadingView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if viewModel.messages.isEmpty, let error = viewModel.errorMessage {
+                ContentUnavailableView(L10n.chatsTitle, systemImage: "exclamationmark.triangle", description: Text(error))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
             ScrollViewReader { proxy in
                 ScrollView {
@@ -131,6 +134,9 @@ struct ChatDetailView: View {
             }
         }
         .task { await viewModel.load() }
+        .onDisappear {
+            Task { await viewModel.close() }
+        }
     }
 
     @ViewBuilder

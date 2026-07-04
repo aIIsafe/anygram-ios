@@ -8,6 +8,7 @@ import TDLibKit
 public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
     private var chats: [Chat] = []
     private var messagesByChat: [UUID: [Message]] = [:]
+    private var messagesSubjects: [UUID: CurrentValueSubject<[Message], Never>] = [:]
     private var loadedHistoryOffsets: [UUID: Int64] = [:]
     private var currentUserTelegramId: Int64?
     private let chatsSubject: CurrentValueSubject<[Chat], Never>
@@ -38,45 +39,86 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
         return filtered.sorted(by: Self.sortChats)
     }
 
+    public func cachedMessages(for chatID: UUID) -> [Message] {
+        lock.lock()
+        defer { lock.unlock() }
+        return messagesByChat[chatID] ?? []
+    }
+
+    public func prefetchMessages(for chatID: UUID) async {
+        guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return }
+        guard let client = TDLibSession.shared.tdClient,
+              let chatTelegramId = TelegramIdentity.telegramId(from: chatID) else { return }
+        _ = try? await client.openChat(chatId: chatTelegramId)
+        _ = try? await loadAndMergeHistory(
+            chatID: chatID,
+            chatTelegramId: chatTelegramId,
+            fromMessageId: 0,
+            limit: 30,
+            client: client
+        )
+    }
+
+    public func openChat(_ chatID: UUID) async {
+        guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return }
+        guard let client = TDLibSession.shared.tdClient,
+              let chatTelegramId = TelegramIdentity.telegramId(from: chatID) else { return }
+        _ = try? await client.openChat(chatId: chatTelegramId)
+    }
+
+    public func closeChat(_ chatID: UUID) async {
+        guard let client = TDLibSession.shared.tdClient,
+              let chatTelegramId = TelegramIdentity.telegramId(from: chatID) else { return }
+        _ = try? await client.closeChat(chatId: chatTelegramId)
+    }
+
     public func fetchMessages(for chatID: UUID, page: Int, pageSize: Int) async throws -> [Message] {
-        guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return [] }
+        await waitForAuthorizedAccess()
+        guard TDLibAccessGate.shared.canCallAuthenticatedAPI else {
+            throw AuthError.notConfigured
+        }
         guard let client = TDLibSession.shared.tdClient,
               let chatTelegramId = TelegramIdentity.telegramId(from: chatID) else {
-            return []
+            throw AuthError.notConfigured
         }
 
+        _ = try? await client.openChat(chatId: chatTelegramId)
+
         lock.lock()
-        let cached = messagesByChat[chatID] ?? []
         let fromMessageId = page == 0 ? 0 : (loadedHistoryOffsets[chatID] ?? 0)
         lock.unlock()
 
-        if page == 0, !cached.isEmpty {
-            return cached
-        }
-
-        let history = try await client.getChatHistory(
-            chatId: chatTelegramId,
+        let result = try await loadAndMergeHistory(
+            chatID: chatID,
+            chatTelegramId: chatTelegramId,
             fromMessageId: fromMessageId,
             limit: pageSize,
-            offset: 0,
-            onlyLocal: false
+            client: client
         )
 
-        let rawMessages = history.messages ?? []
-        let mapped = await mapMessages(rawMessages, chatID: chatID, client: client)
-        lock.lock()
-        if let oldest = rawMessages.last?.id, oldest > 0 {
-            loadedHistoryOffsets[chatID] = oldest
+        if page == 0,
+           let lastMessage = result.last,
+           let components = TelegramIdentity.telegramMessageId(from: lastMessage.id) {
+            _ = try? await client.viewMessages(
+                chatId: chatTelegramId,
+                forceRead: true,
+                messageIds: [components.messageId],
+                source: nil
+            )
         }
-        var existing = messagesByChat[chatID, default: []]
-        let existingIDs = Set(existing.map(\.id))
-        let newMessages = mapped.filter { !existingIDs.contains($0.id) }
-        existing.insert(contentsOf: newMessages, at: 0)
-        existing.sort { $0.timestamp < $1.timestamp }
-        messagesByChat[chatID] = existing
-        let result = existing
-        lock.unlock()
+
         return result
+    }
+
+    public func observeMessages(for chatID: UUID) -> AnyPublisher<[Message], Never> {
+        lock.lock()
+        if messagesSubjects[chatID] == nil {
+            let initial = messagesByChat[chatID] ?? []
+            messagesSubjects[chatID] = CurrentValueSubject(initial)
+        }
+        let subject = messagesSubjects[chatID]!
+        lock.unlock()
+        return subject.eraseToAnyPublisher()
     }
 
     public func sendMessage(_ text: String, to chatID: UUID, replyTo: UUID?) async throws -> Message {
@@ -225,6 +267,49 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
 
     public func observeChats() -> AnyPublisher<[Chat], Never> {
         chatsSubject.eraseToAnyPublisher()
+    }
+
+    // MARK: - History
+
+    private func loadAndMergeHistory(
+        chatID: UUID,
+        chatTelegramId: Int64,
+        fromMessageId: Int64,
+        limit: Int,
+        client: TDLibClient
+    ) async throws -> [Message] {
+        let history = try await client.getChatHistory(
+            chatId: chatTelegramId,
+            fromMessageId: fromMessageId,
+            limit: limit,
+            offset: 0,
+            onlyLocal: false
+        )
+
+        let rawMessages = history.messages ?? []
+        let mapped = await mapMessages(rawMessages, chatID: chatID, client: client)
+        lock.lock()
+        if let oldest = rawMessages.last?.id, oldest > 0 {
+            loadedHistoryOffsets[chatID] = oldest
+        }
+        var existing = messagesByChat[chatID, default: []]
+        let existingIDs = Set(existing.map(\.id))
+        let newMessages = mapped.filter { !existingIDs.contains($0.id) }
+        existing.insert(contentsOf: newMessages, at: 0)
+        existing.sort { $0.timestamp < $1.timestamp }
+        messagesByChat[chatID] = existing
+        let result = existing
+        lock.unlock()
+        publishMessages(for: chatID)
+        return result
+    }
+
+    private func publishMessages(for chatID: UUID) {
+        lock.lock()
+        let messages = messagesByChat[chatID] ?? []
+        let subject = messagesSubjects[chatID]
+        lock.unlock()
+        subject?.send(messages)
     }
 
     // MARK: - Sync
@@ -489,6 +574,7 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
                 messagesByChat[chatUUID] = messages
             }
             lock.unlock()
+            publishMessages(for: chatUUID)
         case .updateChatAction(let payload):
             guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return }
             let chatUUID = TelegramIdentity.uuid(fromTelegramId: payload.chatId)
@@ -528,6 +614,7 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
             messagesByChat[message.chatID] = existing
         }
         lock.unlock()
+        publishMessages(for: message.chatID)
     }
 
     private func removeChatLocally(_ chatID: UUID) {
@@ -535,6 +622,7 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
         chats.removeAll { $0.id == chatID }
         messagesByChat.removeValue(forKey: chatID)
         loadedHistoryOffsets.removeValue(forKey: chatID)
+        messagesSubjects.removeValue(forKey: chatID)
         let snapshot = chats
         lock.unlock()
         chatsSubject.send(snapshot)

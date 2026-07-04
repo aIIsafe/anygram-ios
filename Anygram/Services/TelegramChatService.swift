@@ -29,8 +29,28 @@ public final class TelegramChatService: ChatServiceProtocol, @unchecked Sendable
         try await backend.fetchChats(includeArchived: includeArchived)
     }
 
+    public func cachedMessages(for chatID: UUID) -> [Message] {
+        backend.cachedMessages(for: chatID)
+    }
+
+    public func prefetchMessages(for chatID: UUID) async {
+        await backend.prefetchMessages(for: chatID)
+    }
+
+    public func openChat(_ chatID: UUID) async {
+        await backend.openChat(chatID)
+    }
+
+    public func closeChat(_ chatID: UUID) async {
+        await backend.closeChat(chatID)
+    }
+
     public func fetchMessages(for chatID: UUID, page: Int, pageSize: Int) async throws -> [Message] {
         try await backend.fetchMessages(for: chatID, page: page, pageSize: pageSize)
+    }
+
+    public func observeMessages(for chatID: UUID) -> AnyPublisher<[Message], Never> {
+        backend.observeMessages(for: chatID)
     }
 
     public func sendMessage(_ text: String, to chatID: UUID, replyTo: UUID?) async throws -> Message {

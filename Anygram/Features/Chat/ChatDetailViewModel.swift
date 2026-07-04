@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 @MainActor
@@ -14,26 +15,53 @@ final class ChatDetailViewModel: ObservableObject {
 
     private let repository: ChatRepository
     private var currentPage = 0
+    private var cancellables = Set<AnyCancellable>()
 
     init(chat: Chat, repository: ChatRepository) {
         self.chat = chat
         self.repository = repository
+        messages = repository.cachedMessages(for: chat.id)
+
+        repository.observeMessages(for: chat.id)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] updated in
+                guard let self, !updated.isEmpty else { return }
+                self.messages = updated
+                self.refreshUnreadSeparator()
+            }
+            .store(in: &cancellables)
     }
 
     func load() async {
-        isLoading = true
         errorMessage = nil
+
+        let cached = repository.cachedMessages(for: chat.id)
+        if !cached.isEmpty {
+            messages = cached
+        } else {
+            isLoading = true
+        }
+
         defer { isLoading = false }
+
+        await repository.openChat(chat.id)
+
         do {
             let fetched = try await repository.fetchMessages(for: chat.id, page: currentPage)
-            messages = fetched
-            if let firstUnread = messages.firstIndex(where: { !$0.isOutgoing && $0.deliveryState != .read }) {
-                unreadSeparatorIndex = firstUnread
+            if !fetched.isEmpty || messages.isEmpty {
+                messages = fetched
             }
+            refreshUnreadSeparator()
             simulateTyping()
         } catch {
-            errorMessage = error.localizedDescription
+            if messages.isEmpty {
+                errorMessage = error.localizedDescription
+            }
         }
+    }
+
+    func close() async {
+        await repository.closeChat(chat.id)
     }
 
     func sendMessage() async {
@@ -74,6 +102,14 @@ final class ChatDetailViewModel: ObservableObject {
                 return lhs.key < rhs.key
             }
             return lDate < rDate
+        }
+    }
+
+    private func refreshUnreadSeparator() {
+        if let firstUnread = messages.firstIndex(where: { !$0.isOutgoing && $0.deliveryState != .read }) {
+            unreadSeparatorIndex = firstUnread
+        } else {
+            unreadSeparatorIndex = nil
         }
     }
 

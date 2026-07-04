@@ -122,6 +122,9 @@ struct ChatsListView: View {
                 .matchedGeometryEffect(id: chat.id, in: animation)
         }
         .buttonStyle(.plain)
+        .task {
+            await viewModel.prefetchMessages(for: chat.id)
+        }
         .swipeActions(edge: .leading) {
             Button {
                 Task { await viewModel.togglePin(chat) }

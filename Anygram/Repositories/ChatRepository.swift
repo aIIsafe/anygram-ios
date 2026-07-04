@@ -24,8 +24,28 @@ public final class ChatRepository: ObservableObject {
         return chats
     }
 
+    public func cachedMessages(for chatID: UUID) -> [Message] {
+        chatService.cachedMessages(for: chatID)
+    }
+
+    public func prefetchMessages(for chatID: UUID) async {
+        await chatService.prefetchMessages(for: chatID)
+    }
+
+    public func openChat(_ chatID: UUID) async {
+        await chatService.openChat(chatID)
+    }
+
+    public func closeChat(_ chatID: UUID) async {
+        await chatService.closeChat(chatID)
+    }
+
     public func fetchMessages(for chatID: UUID, page: Int = 0, pageSize: Int = 30) async throws -> [Message] {
         try await chatService.fetchMessages(for: chatID, page: page, pageSize: pageSize)
+    }
+
+    public func observeMessages(for chatID: UUID) -> AnyPublisher<[Message], Never> {
+        chatService.observeMessages(for: chatID)
     }
 
     public func sendMessage(_ text: String, to chatID: UUID, replyTo: UUID? = nil) async throws -> Message {

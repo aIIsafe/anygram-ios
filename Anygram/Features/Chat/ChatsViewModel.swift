@@ -82,4 +82,8 @@ final class ChatsViewModel: ObservableObject {
         _ = try? await repository.archiveChat(chat.id)
         await load()
     }
+
+    func prefetchMessages(for chatID: UUID) async {
+        await repository.prefetchMessages(for: chatID)
+    }
 }
