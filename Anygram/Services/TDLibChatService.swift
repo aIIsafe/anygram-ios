@@ -320,7 +320,7 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
             return await existingTask.value
         }
 
-        let task = Task { [weak self] in
+        let task = Task<[Message], Never> { [weak self] in
             guard let self else { return [] }
             return await self.performLoadAndMergeHistory(
                 chatID: chatID,

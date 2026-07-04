@@ -43,6 +43,8 @@ final class SyncDiagnosticsViewModel: ObservableObject {
             hints.append(.init(title: "TDLib", detail: L10n.diagnosticsHintTdlib, isSuccess: false))
         }
         #endif
+
+        let chatsCount: Int
         do {
             let chats = try await container.chatRepository.fetchChats(includeArchived: true)
             chatsCount = chats.count
