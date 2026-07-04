@@ -56,7 +56,10 @@ jobs:
       - name: Install XcodeGen
         run: |
           if ! command -v xcodegen &>/dev/null; then
-            brew install xcodegen
+            brew install xcodegen || brew link --overwrite xcodegen
+          fi
+          if ! command -v xcodegen &>/dev/null; then
+            brew link --overwrite xcodegen
           fi
           xcodegen --version
 
@@ -165,7 +168,10 @@ jobs:
       - name: Install XcodeGen
         run: |
           if ! command -v xcodegen &>/dev/null; then
-            brew install xcodegen
+            brew install xcodegen || brew link --overwrite xcodegen
+          fi
+          if ! command -v xcodegen &>/dev/null; then
+            brew link --overwrite xcodegen
           fi
           xcodegen --version
 
