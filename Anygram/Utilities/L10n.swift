@@ -215,6 +215,9 @@ enum L10n {
     static let diagnosticsHintTdlib = String(localized: "diagnostics.hintTdlib")
     static let diagnosticsHintChats = String(localized: "diagnostics.hintChats")
     static let diagnosticsHintEmptyChats = String(localized: "diagnostics.hintEmptyChats")
+    static let diagnosticsExportLogs = String(localized: "diagnostics.exportLogs")
+    static let diagnosticsChatsFetch = String(localized: "diagnostics.chatsFetch")
+    static let diagnosticsChatsLoading = String(localized: "diagnostics.chatsLoading")
 
     static func diagnosticsCountFormat(_ count: Int) -> String {
         String(localized: "diagnostics.countFormat \(count)")
@@ -222,5 +225,17 @@ enum L10n {
 
     static func diagnosticsMessagesPrefetch(_ count: Int) -> String {
         String(localized: "diagnostics.messagesPrefetch \(count)")
+    }
+
+    static func diagnosticsLogFileHint(_ size: String) -> String {
+        String(localized: "diagnostics.logFileHint \(size)")
+    }
+
+    static func diagnosticsChatsLoaded(_ count: Int) -> String {
+        String(localized: "diagnostics.chatsLoaded \(count)")
+    }
+
+    static func diagnosticsChatsError(_ message: String) -> String {
+        String(localized: "diagnostics.chatsError \(message)")
     }
 }

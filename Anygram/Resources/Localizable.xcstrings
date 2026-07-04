@@ -1107,8 +1107,8 @@
     },
     "diagnostics.hintEmptyChats" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Chats list is empty — check network and TDLib logs below." } },
-        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Список чатов пуст — проверьте сеть и логи TDLib ниже." } }
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Chats list is empty — check network and export logs." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Список чатов пуст — проверьте сеть и экспортируйте логи." } }
       }
     },
     "diagnostics.countFormat %lld" : {
@@ -1121,6 +1121,42 @@
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Prefetch enabled for up to %lld chats" } },
         "ru" : { "stringUnit" : { "state" : "translated", "value" : "Предзагрузка до %lld чатов" } }
+      }
+    },
+    "diagnostics.exportLogs" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Export logs" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Экспорт логов" } }
+      }
+    },
+    "diagnostics.chatsFetch" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Chats (fetch)" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Чаты (загрузка)" } }
+      }
+    },
+    "diagnostics.chatsLoading" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Loading chat list…" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Загрузка списка чатов…" } }
+      }
+    },
+    "diagnostics.logFileHint %@" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Debug log file: anygram-debug.log (%@). Export to share with support or AI." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Файл логов: anygram-debug.log (%@). Экспортируйте, чтобы отправить в поддержку или AI." } }
+      }
+    },
+    "diagnostics.chatsLoaded %lld" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Chats loaded: %lld" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Чатов загружено: %lld" } }
+      }
+    },
+    "diagnostics.chatsError %@" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Error: %@" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Ошибка: %@" } }
       }
     }
   },

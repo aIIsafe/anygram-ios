@@ -1,42 +1,51 @@
 import SwiftUI
 
-/// Full-screen scrollable debug log viewer (temporary auth diagnostics).
+/// Export-only debug logs screen (no heavy in-app log text).
 struct DebugLogsView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var logText = ""
-    @State private var isLoading = true
-    @State private var scrollID = UUID()
+    @State private var showShareSheet = false
+    @State private var logFileSizeText = "—"
+    @State private var recentErrors: [String] = []
 
     var body: some View {
         NavigationStack {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    Group {
-                        if isLoading && logText.isEmpty {
-                            ProgressView()
-                                .frame(maxWidth: .infinity, minHeight: 120)
-                        } else {
-                            Text(logText.isEmpty ? "Нет записей" : logText)
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(AppColors.textPrimary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .textSelection(.enabled)
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                Text(L10n.diagnosticsLogFileHint(logFileSizeText))
+                    .font(AppTypography.caption)
+                    .foregroundStyle(AppColors.textSecondary)
+
+                if !recentErrors.isEmpty {
+                    VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                        Text(L10n.diagnosticsRecentError)
+                            .font(AppTypography.captionBold)
+                            .foregroundStyle(AppColors.textPrimary)
+                        ForEach(recentErrors, id: \.self) { line in
+                            Text(line)
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(AppColors.textSecondary)
+                                .lineLimit(2)
                         }
                     }
                     .padding(AppSpacing.sm)
-                    .id(scrollID)
+                    .glassCard()
                 }
-                .background(AppColors.background)
-                .onChange(of: logText) { _, _ in
-                    scrollID = UUID()
-                    withAnimation(.easeOut(duration: 0.15)) {
-                        proxy.scrollTo(scrollID, anchor: .bottom)
-                    }
+
+                Button {
+                    AppDebugLogger.shared.flushNow()
+                    showShareSheet = true
+                } label: {
+                    Label(L10n.diagnosticsExportLogs, systemImage: "square.and.arrow.up")
+                        .font(AppTypography.body)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, AppSpacing.sm)
                 }
-                .onAppear {
-                    proxy.scrollTo(scrollID, anchor: .bottom)
-                }
+                .buttonStyle(.borderedProminent)
+                .tint(AppColors.accent)
+
+                Spacer()
             }
+            .padding(AppSpacing.md)
+            .background(AppColors.background)
             .navigationTitle("Логи")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(AppColors.background, for: .navigationBar)
@@ -45,57 +54,38 @@ struct DebugLogsView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Назад") { dismiss() }
                 }
-                ToolbarItemGroup(placement: .primaryAction) {
-                    Button {
-                        AppDebugLogger.shared.clear()
-                    } label: {
-                        Image(systemName: "trash")
-                    }
-                    Button {
-                        Task { await reloadLogs(scrollToBottom: true) }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    Button {
-                        Task {
-                            let text = await loadExportText()
-                            UIPasteboard.general.string = text
-                        }
-                    } label: {
-                        Image(systemName: "doc.on.doc")
-                    }
-                }
             }
         }
         .preferredColorScheme(.dark)
-        .task { await reloadLogs(scrollToBottom: false) }
-        .onReceive(
-            AppDebugLogger.shared.$revision
-                .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
-        ) { _ in
-            Task { await reloadLogs(scrollToBottom: true) }
+        .onAppear { refreshSummary() }
+        .sheet(isPresented: $showShareSheet) {
+            LogFileShareSheet(url: AppDebugLogger.shared.logFileURL())
         }
     }
 
-    @MainActor
-    private func reloadLogs(scrollToBottom: Bool) async {
-        isLoading = true
-        let text = await loadExportText()
-        logText = text
-        isLoading = false
-        if scrollToBottom {
-            scrollID = UUID()
-        }
+    private func refreshSummary() {
+        logFileSizeText = formatByteCount(AppDebugLogger.shared.logFileByteCount())
+        recentErrors = AppDebugLogger.shared.recentErrors(5)
     }
 
-    private func loadExportText() async -> String {
-        await Task.detached {
-            AppDebugLogger.shared.makeSnapshot().exportText
-        }.value
+    private func formatByteCount(_ bytes: Int) -> String {
+        if bytes < 1024 { return "\(bytes) B" }
+        if bytes < 1024 * 1024 { return String(format: "%.1f KB", Double(bytes) / 1024) }
+        return String(format: "%.1f MB", Double(bytes) / (1024 * 1024))
     }
 }
 
-/// Small bug button that opens debug logs page (NavigationStack push).
+private struct LogFileShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+/// Small bug button that opens debug logs export page.
 struct DebugLogsButton: View {
     @Binding var showLogs: Bool
 

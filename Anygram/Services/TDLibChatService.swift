@@ -6,6 +6,21 @@ import TDLibKit
 
 /// TDLib-backed chat sync using BetterTG connection patterns (`getChats`, `getChatHistory`, update handlers).
 public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
+    public struct ChatSyncDiagnostics: Sendable {
+        public let loadedCount: Int
+        public let lastError: String?
+        public let isLoading: Bool
+    }
+
+    private static let syncLock = NSLock()
+    private static var syncDiagnostics = ChatSyncDiagnostics(loadedCount: 0, lastError: nil, isLoading: false)
+
+    public static func currentSyncDiagnostics() -> ChatSyncDiagnostics {
+        syncLock.lock()
+        defer { syncLock.unlock() }
+        return syncDiagnostics
+    }
+
     private var chats: [Chat] = []
     private var messagesByChat: [UUID: [Message]] = [:]
     private var messagesSubjects: [UUID: CurrentValueSubject<[Message], Never>] = [:]
@@ -15,6 +30,8 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
     private let chatsSubject: CurrentValueSubject<[Chat], Never>
     private var typingSubjects: [UUID: PassthroughSubject<TypingStatus, Never>] = [:]
     private var updateHandlerID: UUID?
+    private var reloadTask: Task<Void, Never>?
+    private var debouncedReloadTask: Task<Void, Never>?
     private let lock = NSLock()
 
     public init() {
@@ -31,6 +48,7 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
     }
 
     public func fetchChats(includeArchived: Bool) async throws -> [Chat] {
+        await waitForAuthorizedAccess()
         guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return [] }
         await reloadAllChats()
         lock.lock()
@@ -434,18 +452,66 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
 
     private func reloadAllChats() async {
         await waitForAuthorizedAccess()
-        guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return }
-        guard let client = TDLibSession.shared.tdClient else { return }
-        await refreshCurrentUserId()
-
-        async let mainChats = loadChats(from: .chatListMain, archived: false, client: client)
-        async let archiveChats = loadChats(from: .chatListArchive, archived: true, client: client)
-        let combined = await (mainChats + archiveChats).sorted(by: Self.sortChats)
+        guard TDLibAccessGate.shared.canCallAuthenticatedAPI else {
+            Self.setSyncDiagnostics(loadedCount: 0, lastError: "TDLib not authorized", isLoading: false)
+            return
+        }
 
         lock.lock()
-        chats = combined
+        if let existing = reloadTask {
+            lock.unlock()
+            await existing.value
+            return
+        }
+        let task = Task { await self.performReloadAllChats() }
+        reloadTask = task
         lock.unlock()
-        chatsSubject.send(combined)
+        await task.value
+        lock.lock()
+        reloadTask = nil
+        lock.unlock()
+    }
+
+    private func scheduleDebouncedReload() {
+        debouncedReloadTask?.cancel()
+        debouncedReloadTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled else { return }
+            await self?.reloadAllChats()
+        }
+    }
+
+    private func performReloadAllChats() async {
+        let previousCount = Self.currentSyncDiagnostics().loadedCount
+        Self.setSyncDiagnostics(loadedCount: previousCount, lastError: nil, isLoading: true)
+        guard let client = TDLibSession.shared.tdClient else {
+            Self.setSyncDiagnostics(loadedCount: 0, lastError: "TDLib client unavailable", isLoading: false)
+            return
+        }
+
+        refreshCurrentUserId()
+
+        do {
+            let mainChats = try await loadChats(from: .chatListMain, archived: false, client: client)
+            let archiveChats = try await loadChats(from: .chatListArchive, archived: true, client: client)
+            let combined = (mainChats + archiveChats).sorted(by: Self.sortChats)
+
+            lock.lock()
+            chats = combined
+            lock.unlock()
+            chatsSubject.send(combined)
+            Self.setSyncDiagnostics(loadedCount: combined.count, lastError: nil, isLoading: false)
+        } catch {
+            let message = Self.tdlibErrorMessage(error)
+            Self.setSyncDiagnostics(loadedCount: previousCount, lastError: message, isLoading: false)
+            AppDebugLogger.shared.log("reloadAllChats failed: \(message)", category: .CHAT)
+        }
+    }
+
+    private static func setSyncDiagnostics(loadedCount: Int, lastError: String?, isLoading: Bool) {
+        syncLock.lock()
+        syncDiagnostics = ChatSyncDiagnostics(loadedCount: loadedCount, lastError: lastError, isLoading: isLoading)
+        syncLock.unlock()
     }
 
     private func waitForAuthorizedAccess() async {
@@ -455,17 +521,38 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
         }
     }
 
-    private func loadChats(from list: ChatList, archived: Bool, client: TDLibClient) async -> [Chat] {
+    private enum ChatListLoadError: LocalizedError {
+        case timedOut(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .timedOut(let message):
+                return message
+            }
+        }
+    }
+
+    private func loadChats(from list: ChatList, archived: Bool, client: TDLibClient) async throws -> [Chat] {
+        try await AsyncTimeout.withTimeout(
+            seconds: 12,
+            error: ChatListLoadError.timedOut("getChats timed out")
+        ) {
+            await self.loadChatsResilient(from: list, archived: archived, client: client)
+        }
+    }
+
+    /// BetterTG-style chat list load: `loadChats` once, then poll `getChats` with a bounded wait.
+    private func loadChatsResilient(from list: ChatList, archived: Bool, client: TDLibClient) async -> [Chat] {
         _ = try? await client.loadChats(chatList: list, limit: 100)
 
         var chatIds: [Int64] = []
-        let deadline = Date().addingTimeInterval(8)
+        let deadline = Date().addingTimeInterval(6)
         while Date() < deadline {
-            if let ids = try? await client.getChats(chatList: list, limit: 200).chatIds, !ids.isEmpty {
+            if let ids = try? await client.getChats(chatList: list, limit: 200).chatIds {
                 chatIds = ids
-                break
+                if !ids.isEmpty { break }
             }
-            try? await Task.sleep(nanoseconds: 250_000_000)
+            try? await Task.sleep(nanoseconds: 200_000_000)
         }
         if chatIds.isEmpty,
            let ids = try? await client.getChats(chatList: list, limit: 200).chatIds {
@@ -668,9 +755,12 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
                 TDLibAccessGate.shared.markAuthorized()
                 Task { await reloadAllChats() }
             }
+        case .updateChatList:
+            guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return }
+            scheduleDebouncedReload()
         case .updateNewChat, .updateChatLastMessage, .updateChatReadInbox, .updateChatPosition:
             guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return }
-            Task { await reloadAllChats() }
+            scheduleDebouncedReload()
         case .updateNewMessage(let payload):
             guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return }
             let chatUUID = TelegramIdentity.uuid(fromTelegramId: payload.message.chatId)

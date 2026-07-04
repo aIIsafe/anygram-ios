@@ -22,6 +22,9 @@ final class ChatsViewModel: ObservableObject {
                 guard let self else { return }
                 self.archivedChats = chats.filter(\.isArchived)
                 self.chats = chats.filter { !$0.isArchived }
+                if !chats.isEmpty {
+                    self.isLoading = false
+                }
             }
             .store(in: &cancellables)
     }
@@ -51,7 +54,9 @@ final class ChatsViewModel: ObservableObject {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            let fetched = try await repository.fetchChats(includeArchived: true)
+            let fetched = try await withLoadTimeout {
+                try await repository.fetchChats(includeArchived: true)
+            }
             archivedChats = fetched.filter(\.isArchived)
             chats = fetched.filter { !$0.isArchived }
         } catch {
@@ -85,5 +90,19 @@ final class ChatsViewModel: ObservableObject {
 
     func prefetchMessages(for chatID: UUID) async {
         await repository.prefetchMessages(for: chatID)
+    }
+
+    private func withLoadTimeout<T: Sendable>(
+        _ operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await AsyncTimeout.withTimeout(seconds: 20, error: ChatLoadTimeoutError()) {
+            try await operation()
+        }
+    }
+}
+
+private struct ChatLoadTimeoutError: LocalizedError {
+    var errorDescription: String? {
+        "Chat list load timed out"
     }
 }

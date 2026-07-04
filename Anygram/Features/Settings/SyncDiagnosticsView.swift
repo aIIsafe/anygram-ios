@@ -13,6 +13,7 @@ final class SyncDiagnosticsViewModel: ObservableObject {
     @Published var failedItems: [DiagnosticItem] = []
     @Published var hintItems: [DiagnosticItem] = []
     @Published var isRefreshing = false
+    @Published var logFileSizeText = ""
 
     private let container: DIContainer
 
@@ -23,10 +24,6 @@ final class SyncDiagnosticsViewModel: ObservableObject {
     func refresh() async {
         isRefreshing = true
         defer { isRefreshing = false }
-
-        let snapshot = await Task.detached {
-            AppDebugLogger.shared.makeSnapshot(recentErrorCount: 8)
-        }.value
 
         var loaded: [DiagnosticItem] = []
         var failed: [DiagnosticItem] = []
@@ -46,6 +43,28 @@ final class SyncDiagnosticsViewModel: ObservableObject {
             failed.append(.init(title: "TDLib", detail: L10n.diagnosticsTdlibNotReady, isSuccess: false))
             hints.append(.init(title: "TDLib", detail: L10n.diagnosticsHintTdlib, isSuccess: false))
         }
+
+        let chatSync = TDLibChatService.currentSyncDiagnostics()
+        if chatSync.isLoading {
+            loaded.append(.init(
+                title: L10n.diagnosticsChats,
+                detail: L10n.diagnosticsChatsLoading,
+                isSuccess: true
+            ))
+        } else if let error = chatSync.lastError, !error.isEmpty {
+            failed.append(.init(
+                title: L10n.diagnosticsChats,
+                detail: L10n.diagnosticsChatsError(error),
+                isSuccess: false
+            ))
+            hints.append(.init(title: L10n.diagnosticsChats, detail: L10n.diagnosticsHintChats, isSuccess: false))
+        } else {
+            loaded.append(.init(
+                title: L10n.diagnosticsChats,
+                detail: L10n.diagnosticsChatsLoaded(chatSync.loadedCount),
+                isSuccess: true
+            ))
+        }
         #endif
 
         let chatsCount: Int
@@ -53,14 +72,14 @@ final class SyncDiagnosticsViewModel: ObservableObject {
             let chats = try await container.chatRepository.fetchChats(includeArchived: true)
             chatsCount = chats.count
             loaded.append(.init(
-                title: L10n.diagnosticsChats,
+                title: L10n.diagnosticsChatsFetch,
                 detail: L10n.diagnosticsCountFormat(chatsCount),
                 isSuccess: true
             ))
         } catch {
             chatsCount = 0
-            failed.append(.init(title: L10n.diagnosticsChats, detail: error.localizedDescription, isSuccess: false))
-            hints.append(.init(title: L10n.diagnosticsChats, detail: L10n.diagnosticsHintChats, isSuccess: false))
+            failed.append(.init(title: L10n.diagnosticsChatsFetch, detail: error.localizedDescription, isSuccess: false))
+            hints.append(.init(title: L10n.diagnosticsChatsFetch, detail: L10n.diagnosticsHintChats, isSuccess: false))
         }
 
         let contactsCount: Int
@@ -101,7 +120,7 @@ final class SyncDiagnosticsViewModel: ObservableObject {
             failed.append(.init(title: L10n.diagnosticsCalls, detail: error.localizedDescription, isSuccess: false))
         }
 
-        for line in snapshot.recentErrors {
+        for line in AppDebugLogger.shared.recentErrors(8) {
             failed.append(.init(title: L10n.diagnosticsRecentError, detail: line, isSuccess: false))
         }
 
@@ -109,22 +128,22 @@ final class SyncDiagnosticsViewModel: ObservableObject {
             hints.append(.init(title: L10n.diagnosticsChats, detail: L10n.diagnosticsHintEmptyChats, isSuccess: false))
         }
 
+        logFileSizeText = Self.formatByteCount(AppDebugLogger.shared.logFileByteCount())
         loadedItems = loaded
         failedItems = failed
         hintItems = hints
+    }
+
+    private static func formatByteCount(_ bytes: Int) -> String {
+        if bytes < 1024 { return "\(bytes) B" }
+        if bytes < 1024 * 1024 { return String(format: "%.1f KB", Double(bytes) / 1024) }
+        return String(format: "%.1f MB", Double(bytes) / (1024 * 1024))
     }
 }
 
 struct SyncDiagnosticsView: View {
     @StateObject private var viewModel: SyncDiagnosticsViewModel
-    @State private var logSnapshot = AppDebugLogger.Snapshot(
-        linesByCategory: [:],
-        exportText: "",
-        recentErrors: [],
-        totalLineCount: 0
-    )
-    @State private var expandedCategories: Set<AppDebugLogger.Category> = []
-    @State private var isLoadingLogs = false
+    @State private var showShareSheet = false
 
     init(container: DIContainer) {
         _viewModel = StateObject(wrappedValue: SyncDiagnosticsViewModel(container: container))
@@ -158,7 +177,7 @@ struct SyncDiagnosticsView: View {
                     )
                 }
 
-                logsSection
+                exportSection
             }
             .padding(AppSpacing.md)
         }
@@ -167,33 +186,11 @@ struct SyncDiagnosticsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .glassNavigationBar()
         .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
+            ToolbarItem(placement: .primaryAction) {
                 Button {
-                    AppDebugLogger.shared.clear()
+                    Task { await viewModel.refresh() }
                 } label: {
-                    Image(systemName: "trash")
-                }
-                .accessibilityLabel(L10n.diagnosticsClearLogs)
-
-                Button {
-                    Task {
-                        let text = await Task.detached {
-                            AppDebugLogger.shared.makeSnapshot().exportText
-                        }.value
-                        UIPasteboard.general.string = text
-                    }
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                }
-                .accessibilityLabel(L10n.diagnosticsCopyLogs)
-
-                Button {
-                    Task {
-                        await viewModel.refresh()
-                        await reloadLogs()
-                    }
-                } label: {
-                    if viewModel.isRefreshing || isLoadingLogs {
+                    if viewModel.isRefreshing {
                         ProgressView()
                     } else {
                         Image(systemName: "arrow.clockwise")
@@ -202,16 +199,9 @@ struct SyncDiagnosticsView: View {
                 .accessibilityLabel(L10n.diagnosticsRefresh)
             }
         }
-        .task {
-            async let diagnostics: Void = viewModel.refresh()
-            async let logs: Void = reloadLogs()
-            _ = await (diagnostics, logs)
-        }
-        .onReceive(
-            AppDebugLogger.shared.$revision
-                .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
-        ) { _ in
-            Task { await reloadLogs() }
+        .task { await viewModel.refresh() }
+        .sheet(isPresented: $showShareSheet) {
+            LogFileShareSheet(url: AppDebugLogger.shared.logFileURL())
         }
     }
 
@@ -250,74 +240,39 @@ struct SyncDiagnosticsView: View {
         }
     }
 
-    private var logsSection: some View {
+    private var exportSection: some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
-            HStack {
-                Text(L10n.diagnosticsLogs)
-                    .font(AppTypography.headline)
-                    .foregroundStyle(AppColors.textPrimary)
-                Spacer()
-                if isLoadingLogs {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Text("\(logSnapshot.totalLineCount)")
-                        .font(AppTypography.caption)
-                        .foregroundStyle(AppColors.textTertiary)
-                }
-            }
+            Text(L10n.diagnosticsLogs)
+                .font(AppTypography.headline)
+                .foregroundStyle(AppColors.textPrimary)
 
-            ForEach(AppDebugLogger.Category.allCases, id: \.self) { category in
-                let lines = logSnapshot.linesByCategory[category] ?? []
-                DisclosureGroup(isExpanded: binding(for: category)) {
-                    if lines.isEmpty {
-                        Text(L10n.diagnosticsNoLogs)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(AppColors.textTertiary)
-                            .padding(.vertical, AppSpacing.xs)
-                    } else {
-                        Text(lines.joined(separator: "\n"))
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(AppColors.textSecondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .textSelection(.enabled)
-                            .padding(.vertical, AppSpacing.xs)
-                    }
-                } label: {
-                    HStack {
-                        Text(category.rawValue)
-                            .font(AppTypography.captionBold)
-                        Spacer()
-                        Text("\(lines.count)")
-                            .font(AppTypography.caption)
-                            .foregroundStyle(AppColors.textTertiary)
-                    }
-                }
-                .tint(AppColors.accent)
+            Text(L10n.diagnosticsLogFileHint(viewModel.logFileSizeText))
+                .font(AppTypography.caption)
+                .foregroundStyle(AppColors.textSecondary)
+
+            Button {
+                AppDebugLogger.shared.flushNow()
+                showShareSheet = true
+            } label: {
+                Label(L10n.diagnosticsExportLogs, systemImage: "square.and.arrow.up")
+                    .font(AppTypography.body)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, AppSpacing.sm)
             }
+            .buttonStyle(.borderedProminent)
+            .tint(AppColors.accent)
         }
+        .glassCard()
+        .padding(.vertical, AppSpacing.xs)
+    }
+}
+
+private struct LogFileShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
     }
 
-    @MainActor
-    private func reloadLogs() async {
-        isLoadingLogs = true
-        let snapshot = await Task.detached {
-            AppDebugLogger.shared.makeSnapshot()
-        }.value
-        logSnapshot = snapshot
-        isLoadingLogs = false
-    }
-
-    private func binding(for category: AppDebugLogger.Category) -> Binding<Bool> {
-        Binding(
-            get: { expandedCategories.contains(category) },
-            set: { isExpanded in
-                if isExpanded {
-                    expandedCategories.insert(category)
-                } else {
-                    expandedCategories.remove(category)
-                }
-            }
-        )
-    }
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
