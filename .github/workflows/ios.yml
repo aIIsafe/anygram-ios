@@ -1,4 +1,4 @@
-﻿name: iOS Build
+name: iOS Build
 
 on:
   push:
@@ -7,8 +7,34 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      scaffold: ${{ steps.filter.outputs.scaffold }}
+      tdlib: ${{ steps.filter.outputs.tdlib }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            scaffold:
+              - 'project.ci.yml'
+              - '.github/workflows/ios.yml'
+            tdlib:
+              - 'project.yml'
+              - 'ci/**'
+              - 'Anygram/**'
+              - '.github/workflows/ios.yml'
+
   build-ipa-scaffold:
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.scaffold == 'true'
     runs-on: macos-latest
     timeout-minutes: 30
 
@@ -16,12 +42,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Cache Homebrew
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/Homebrew
+            /opt/homebrew/Cellar/xcodegen
+            /usr/local/Cellar/xcodegen
+          key: ${{ runner.os }}-brew-xcodegen-v1
+          restore-keys: |
+            ${{ runner.os }}-brew-xcodegen-
+
       - name: Install XcodeGen
-        run: brew install xcodegen
+        run: brew list xcodegen &>/dev/null || brew install xcodegen
 
       - name: Generate Xcode project (CI scaffold)
         run: |
-          echo "Scaffold IPA: USE_SCAFFOLD_AUTH — no real Telegram SMS."
+          echo "Scaffold IPA: USE_SCAFFOLD_AUTH - no real Telegram SMS."
           xcodegen generate --spec project.ci.yml
 
       - name: Archive
@@ -32,10 +69,12 @@ jobs:
             -configuration Release \
             -archivePath $RUNNER_TEMP/Anygram.xcarchive \
             -sdk iphoneos \
+            -jobs "$(sysctl -n hw.ncpu)" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            COMPILER_INDEX_STORE_ENABLE=NO
 
       - name: Export IPA (unsigned)
         run: |
@@ -87,6 +126,8 @@ jobs:
           if-no-files-found: error
 
   build-ipa-tdlib:
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.tdlib == 'true'
     runs-on: macos-latest
     timeout-minutes: 90
 
@@ -99,13 +140,26 @@ jobs:
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
             ${{ runner.temp }}/DerivedData
-          key: ${{ runner.os }}-tdlib-v3-${{ hashFiles('project.yml', 'ci/build-tdlib-ipa.sh') }}
+          key: ${{ runner.os }}-tdlib-v4-${{ hashFiles('project.yml', 'ci/build-tdlib-ipa.sh') }}
           restore-keys: |
+            ${{ runner.os }}-tdlib-v4-
             ${{ runner.os }}-tdlib-
 
+      - name: Cache Homebrew
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/Homebrew
+            /opt/homebrew/Cellar/xcodegen
+            /usr/local/Cellar/xcodegen
+          key: ${{ runner.os }}-brew-xcodegen-v1
+          restore-keys: |
+            ${{ runner.os }}-brew-xcodegen-
+
       - name: Install XcodeGen
-        run: brew install xcodegen
+        run: brew list xcodegen &>/dev/null || brew install xcodegen
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app

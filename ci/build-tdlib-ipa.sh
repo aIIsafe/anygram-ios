@@ -3,12 +3,22 @@ set -euo pipefail
 
 DERIVED_DATA="${DERIVED_DATA:-$RUNNER_TEMP/DerivedData}"
 IPA_OUTPUT="${IPA_OUTPUT:-$RUNNER_TEMP/Anygram-tdlib.ipa}"
+SOURCE_PACKAGES="${DERIVED_DATA}/SourcePackages"
+NCPU="$(sysctl -n hw.ncpu 2>/dev/null || echo 4)"
 
-echo "Resolving Swift packages..."
+XCODE_BUILD_FLAGS=(
+  -jobs "$NCPU"
+  COMPILER_INDEX_STORE_ENABLE=NO
+  SWIFT_INDEX_STORE_ENABLE=NO
+)
+
+echo "Resolving Swift packages (derivedDataPath=$DERIVED_DATA)..."
 xcodebuild -resolvePackageDependencies \
   -project Anygram.xcodeproj \
   -scheme Anygram \
-  -derivedDataPath "$DERIVED_DATA"
+  -derivedDataPath "$DERIVED_DATA" \
+  -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
+  "${XCODE_BUILD_FLAGS[@]}"
 
 echo "Building unsigned Release for iOS (BetterTG-style build, not archive)..."
 xcodebuild build \
@@ -17,12 +27,15 @@ xcodebuild build \
   -configuration Release \
   -destination "generic/platform=iOS" \
   -derivedDataPath "$DERIVED_DATA" \
+  -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
+  "${XCODE_BUILD_FLAGS[@]}" \
   CODE_SIGNING_ALLOWED=NO \
   CODE_SIGNING_REQUIRED=NO \
   CODE_SIGN_IDENTITY="-" \
   DEVELOPMENT_TEAM="" \
   PROVISIONING_PROFILE_SPECIFIER="" \
-  IPHONEOS_DEPLOYMENT_TARGET=17.0
+  IPHONEOS_DEPLOYMENT_TARGET=17.0 \
+  ONLY_ACTIVE_ARCH=NO
 
 APP_PATH="$(find "$DERIVED_DATA" -path "*/Build/Products/Release-iphoneos/Anygram.app" -type d | head -1)"
 if [[ -z "$APP_PATH" || ! -d "$APP_PATH" ]]; then
