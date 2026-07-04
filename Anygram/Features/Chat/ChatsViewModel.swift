@@ -55,7 +55,7 @@ final class ChatsViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             let fetched = try await withLoadTimeout {
-                try await repository.fetchChats(includeArchived: true)
+                try await self.repository.fetchChats(includeArchived: true)
             }
             archivedChats = fetched.filter(\.isArchived)
             chats = fetched.filter { !$0.isArchived }
