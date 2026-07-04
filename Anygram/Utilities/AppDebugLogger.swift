@@ -182,8 +182,8 @@ final class AppTDLibLogger: TDLibLogger, @unchecked Sendable {
     private init() {}
 
     func log(_ message: String, type: LoggerMessageType?) {
-        guard type == .error || type == .fatal else { return }
-        let prefix = type.map { "[\($0.description)] " } ?? ""
+        guard let type, type == .error else { return }
+        let prefix = "[\(type.description)] "
         AppDebugLogger.shared.log("\(prefix)\(message)", category: .TDLIB)
     }
 }
