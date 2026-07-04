@@ -26,7 +26,12 @@ struct ChatDetailView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: AppSpacing.sm) {
-                        ForEach(Array(viewModel.groupedMessages().enumerated()), id: \.offset) { _, group in
+                        if viewModel.isLoadingMore {
+                            ProgressView()
+                                .padding(.vertical, AppSpacing.sm)
+                        }
+
+                        ForEach(Array(viewModel.groupedMessages().enumerated()), id: \.offset) { groupIndex, group in
                             Text(group.0)
                                 .font(AppTypography.caption)
                                 .foregroundStyle(AppColors.textSecondary)
@@ -37,6 +42,14 @@ struct ChatDetailView: View {
                                 .padding(.vertical, AppSpacing.xs)
 
                             ForEach(group.1) { message in
+                                if groupIndex == 0, message.id == group.1.first?.id {
+                                    Color.clear
+                                        .frame(height: 1)
+                                        .onAppear {
+                                            Task { await viewModel.loadOlderMessages() }
+                                        }
+                                }
+
                                 if viewModel.unreadSeparatorIndex == viewModel.messages.firstIndex(of: message) {
                                     HStack {
                                         Rectangle().fill(AppColors.accent).frame(height: 1)

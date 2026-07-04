@@ -68,13 +68,14 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
         guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return }
         guard let client = TDLibSession.shared.tdClient,
               let chatTelegramId = TelegramIdentity.telegramId(from: chatID) else { return }
-        await openChatIfNeeded(chatTelegramId: chatTelegramId, client: client)
+        // BetterTG prefetches history on list rows without openChat.
         _ = await loadHistoryResilient(
             chatID: chatID,
             chatTelegramId: chatTelegramId,
             fromMessageId: 0,
             limit: 30,
-            client: client
+            client: client,
+            forceReload: false
         )
     }
 
@@ -125,7 +126,8 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
             chatTelegramId: chatTelegramId,
             fromMessageId: fromMessageId,
             limit: pageSize,
-            client: client
+            client: client,
+            forceReload: page == 0
         )
 
         if page == 0,
@@ -330,13 +332,15 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
         chatTelegramId: Int64,
         fromMessageId: Int64,
         limit: Int,
-        client: TDLibClient
+        client: TDLibClient,
+        forceReload: Bool
     ) async -> [Message] {
         lock.lock()
-        if let existingTask = historyLoadTasks[chatID] {
+        if !forceReload, let existingTask = historyLoadTasks[chatID] {
             lock.unlock()
             return await existingTask.value
         }
+        historyLoadTasks.removeValue(forKey: chatID)
 
         let task = Task<[Message], Never> { [weak self] in
             guard let self else { return [] }
@@ -371,19 +375,15 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
         lock.unlock()
 
         do {
-            var rawMessages = try await requestChatHistory(
+            var rawMessages = try await fetchChatHistoryResilient(
                 chatTelegramId: chatTelegramId,
                 fromMessageId: fromMessageId,
                 limit: limit,
-                onlyLocal: true,
                 client: client
             )
             if rawMessages.isEmpty {
-                rawMessages = try await requestChatHistory(
+                rawMessages = await fallbackMessagesFromChat(
                     chatTelegramId: chatTelegramId,
-                    fromMessageId: fromMessageId,
-                    limit: limit,
-                    onlyLocal: false,
                     client: client
                 )
             }
@@ -414,6 +414,54 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
             )
             return cached
         }
+    }
+
+    /// BetterTG-style history load: poll `getChatHistory` until messages arrive or timeout.
+    private func fetchChatHistoryResilient(
+        chatTelegramId: Int64,
+        fromMessageId: Int64,
+        limit: Int,
+        client: TDLibClient
+    ) async throws -> [TDLibKit.Message] {
+        var rawMessages: [TDLibKit.Message] = []
+        let deadline = Date().addingTimeInterval(fromMessageId == 0 ? 8 : 4)
+        while Date() < deadline {
+            rawMessages = try await requestChatHistory(
+                chatTelegramId: chatTelegramId,
+                fromMessageId: fromMessageId,
+                limit: limit,
+                onlyLocal: false,
+                client: client
+            )
+            if !rawMessages.isEmpty { break }
+
+            rawMessages = try await requestChatHistory(
+                chatTelegramId: chatTelegramId,
+                fromMessageId: fromMessageId,
+                limit: limit,
+                onlyLocal: true,
+                client: client
+            )
+            if !rawMessages.isEmpty { break }
+
+            try await Task.sleep(nanoseconds: 200_000_000)
+        }
+        return rawMessages
+    }
+
+    private func fallbackMessagesFromChat(
+        chatTelegramId: Int64,
+        client: TDLibClient
+    ) async -> [TDLibKit.Message] {
+        guard let tdChat = try? await client.getChat(chatId: chatTelegramId),
+              let lastMessage = tdChat.lastMessage else {
+            return []
+        }
+        AppDebugLogger.shared.log(
+            "getChatHistory empty; seeding from lastMessage chatId=\(chatTelegramId)",
+            category: .CHAT
+        )
+        return [lastMessage]
     }
 
     private func requestChatHistory(

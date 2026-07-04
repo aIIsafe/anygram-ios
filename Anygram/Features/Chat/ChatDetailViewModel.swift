@@ -16,9 +16,11 @@ final class ChatDetailViewModel: ObservableObject {
     @Published var selectedMessageIDs: Set<UUID> = []
     @Published var replyToMessage: Message?
     @Published var unreadSeparatorIndex: Int?
+    @Published var isLoadingMore = false
 
     private let repository: ChatRepository
     private var currentPage = 0
+    private var hasMoreHistory = true
     private var cancellables = Set<AnyCancellable>()
 
     init(chat: Chat, repository: ChatRepository) {
@@ -29,7 +31,7 @@ final class ChatDetailViewModel: ObservableObject {
         repository.observeMessages(for: chat.id)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] updated in
-                guard let self, !updated.isEmpty else { return }
+                guard let self else { return }
                 self.messages = updated
                 self.refreshUnreadSeparator()
             }
@@ -38,6 +40,8 @@ final class ChatDetailViewModel: ObservableObject {
 
     func load() async {
         errorMessage = nil
+        currentPage = 0
+        hasMoreHistory = true
 
         let cached = repository.cachedMessages(for: chat.id)
         if !cached.isEmpty {
@@ -52,9 +56,8 @@ final class ChatDetailViewModel: ObservableObject {
 
         do {
             let fetched = try await repository.fetchMessages(for: chat.id, page: currentPage)
-            if !fetched.isEmpty || messages.isEmpty {
-                messages = fetched
-            }
+            messages = fetched
+            hasMoreHistory = fetched.count >= 30
             refreshUnreadSeparator()
             simulateTyping()
         } catch {
@@ -65,6 +68,30 @@ final class ChatDetailViewModel: ObservableObject {
             if messages.isEmpty {
                 errorMessage = Self.userFacingError(error)
             }
+        }
+    }
+
+    func loadOlderMessages() async {
+        guard hasMoreHistory, !isLoadingMore, !isLoading else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+
+        let previousCount = messages.count
+        currentPage += 1
+
+        do {
+            let fetched = try await repository.fetchMessages(for: chat.id, page: currentPage)
+            messages = fetched
+            if fetched.count <= previousCount {
+                hasMoreHistory = false
+            }
+            refreshUnreadSeparator()
+        } catch {
+            currentPage = max(0, currentPage - 1)
+            AppDebugLogger.shared.log(
+                "ChatDetail loadOlder failed chat=\(chat.title): \(error.localizedDescription)",
+                category: .CHAT
+            )
         }
     }
 
