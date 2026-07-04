@@ -54,7 +54,11 @@ jobs:
             ${{ runner.os }}-brew-xcodegen-
 
       - name: Install XcodeGen
-        run: brew list xcodegen &>/dev/null || brew install xcodegen
+        run: |
+          if ! command -v xcodegen &>/dev/null; then
+            brew install xcodegen
+          fi
+          xcodegen --version
 
       - name: Generate Xcode project (CI scaffold)
         run: |
@@ -159,7 +163,11 @@ jobs:
             ${{ runner.os }}-brew-xcodegen-
 
       - name: Install XcodeGen
-        run: brew list xcodegen &>/dev/null || brew install xcodegen
+        run: |
+          if ! command -v xcodegen &>/dev/null; then
+            brew install xcodegen
+          fi
+          xcodegen --version
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
