@@ -183,13 +183,8 @@ final class AppTDLibLogger: TDLibLogger, @unchecked Sendable {
 
     func log(_ message: String, type: LoggerMessageType?) {
         guard let type else { return }
-        switch type {
-        case .error:
-            let prefix = "[\(type.description)] "
-            AppDebugLogger.shared.log("\(prefix)\(message)", category: .TDLIB)
-        default:
-            break
-        }
+        guard type.description.uppercased().contains("ERROR") else { return }
+        AppDebugLogger.shared.log("[\(type.description)] \(message)", category: .TDLIB)
     }
 }
 #endif
