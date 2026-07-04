@@ -24,6 +24,10 @@ final class SyncDiagnosticsViewModel: ObservableObject {
         isRefreshing = true
         defer { isRefreshing = false }
 
+        let snapshot = await Task.detached {
+            AppDebugLogger.shared.makeSnapshot(recentErrorCount: 8)
+        }.value
+
         var loaded: [DiagnosticItem] = []
         var failed: [DiagnosticItem] = []
         var hints: [DiagnosticItem] = []
@@ -97,8 +101,7 @@ final class SyncDiagnosticsViewModel: ObservableObject {
             failed.append(.init(title: L10n.diagnosticsCalls, detail: error.localizedDescription, isSuccess: false))
         }
 
-        let recentErrors = AppDebugLogger.shared.recentErrors(8)
-        for line in recentErrors {
+        for line in snapshot.recentErrors {
             failed.append(.init(title: L10n.diagnosticsRecentError, detail: line, isSuccess: false))
         }
 
@@ -114,8 +117,14 @@ final class SyncDiagnosticsViewModel: ObservableObject {
 
 struct SyncDiagnosticsView: View {
     @StateObject private var viewModel: SyncDiagnosticsViewModel
-    @ObservedObject private var logger = AppDebugLogger.shared
-    @State private var expandedCategories: Set<AppDebugLogger.Category> = Set(AppDebugLogger.Category.allCases)
+    @State private var logSnapshot = AppDebugLogger.Snapshot(
+        linesByCategory: [:],
+        exportText: "",
+        recentErrors: [],
+        totalLineCount: 0
+    )
+    @State private var expandedCategories: Set<AppDebugLogger.Category> = []
+    @State private var isLoadingLogs = false
 
     init(container: DIContainer) {
         _viewModel = StateObject(wrappedValue: SyncDiagnosticsViewModel(container: container))
@@ -160,23 +169,31 @@ struct SyncDiagnosticsView: View {
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
-                    logger.clear()
+                    AppDebugLogger.shared.clear()
                 } label: {
                     Image(systemName: "trash")
                 }
                 .accessibilityLabel(L10n.diagnosticsClearLogs)
 
                 Button {
-                    UIPasteboard.general.string = logger.exportText()
+                    Task {
+                        let text = await Task.detached {
+                            AppDebugLogger.shared.makeSnapshot().exportText
+                        }.value
+                        UIPasteboard.general.string = text
+                    }
                 } label: {
                     Image(systemName: "doc.on.doc")
                 }
                 .accessibilityLabel(L10n.diagnosticsCopyLogs)
 
                 Button {
-                    Task { await viewModel.refresh() }
+                    Task {
+                        await viewModel.refresh()
+                        await reloadLogs()
+                    }
                 } label: {
-                    if viewModel.isRefreshing {
+                    if viewModel.isRefreshing || isLoadingLogs {
                         ProgressView()
                     } else {
                         Image(systemName: "arrow.clockwise")
@@ -185,7 +202,17 @@ struct SyncDiagnosticsView: View {
                 .accessibilityLabel(L10n.diagnosticsRefresh)
             }
         }
-        .task { await viewModel.refresh() }
+        .task {
+            async let diagnostics: Void = viewModel.refresh()
+            async let logs: Void = reloadLogs()
+            _ = await (diagnostics, logs)
+        }
+        .onReceive(
+            AppDebugLogger.shared.$revision
+                .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+        ) { _ in
+            Task { await reloadLogs() }
+        }
     }
 
     @ViewBuilder
@@ -225,12 +252,23 @@ struct SyncDiagnosticsView: View {
 
     private var logsSection: some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
-            Text(L10n.diagnosticsLogs)
-                .font(AppTypography.headline)
-                .foregroundStyle(AppColors.textPrimary)
+            HStack {
+                Text(L10n.diagnosticsLogs)
+                    .font(AppTypography.headline)
+                    .foregroundStyle(AppColors.textPrimary)
+                Spacer()
+                if isLoadingLogs {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Text("\(logSnapshot.totalLineCount)")
+                        .font(AppTypography.caption)
+                        .foregroundStyle(AppColors.textTertiary)
+                }
+            }
 
             ForEach(AppDebugLogger.Category.allCases, id: \.self) { category in
-                let lines = logger.lines(for: category)
+                let lines = logSnapshot.linesByCategory[category] ?? []
                 DisclosureGroup(isExpanded: binding(for: category)) {
                     if lines.isEmpty {
                         Text(L10n.diagnosticsNoLogs)
@@ -258,6 +296,16 @@ struct SyncDiagnosticsView: View {
                 .tint(AppColors.accent)
             }
         }
+    }
+
+    @MainActor
+    private func reloadLogs() async {
+        isLoadingLogs = true
+        let snapshot = await Task.detached {
+            AppDebugLogger.shared.makeSnapshot()
+        }.value
+        logSnapshot = snapshot
+        isLoadingLogs = false
     }
 
     private func binding(for category: AppDebugLogger.Category) -> Binding<Bool> {

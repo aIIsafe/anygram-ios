@@ -2,24 +2,32 @@ import SwiftUI
 
 /// Full-screen scrollable debug log viewer (temporary auth diagnostics).
 struct DebugLogsView: View {
-    @ObservedObject private var logger = AppDebugLogger.shared
     @Environment(\.dismiss) private var dismiss
+    @State private var logText = ""
+    @State private var isLoading = true
     @State private var scrollID = UUID()
 
     var body: some View {
         NavigationStack {
             ScrollViewReader { proxy in
                 ScrollView {
-                    Text(logger.exportText().isEmpty ? "Нет записей" : logger.exportText())
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(AppColors.textPrimary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(AppSpacing.sm)
-                        .textSelection(.enabled)
-                        .id(scrollID)
+                    Group {
+                        if isLoading && logText.isEmpty {
+                            ProgressView()
+                                .frame(maxWidth: .infinity, minHeight: 120)
+                        } else {
+                            Text(logText.isEmpty ? "Нет записей" : logText)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(AppColors.textPrimary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .padding(AppSpacing.sm)
+                    .id(scrollID)
                 }
                 .background(AppColors.background)
-                .onChange(of: logger.revision) { _, _ in
+                .onChange(of: logText) { _, _ in
                     scrollID = UUID()
                     withAnimation(.easeOut(duration: 0.15)) {
                         proxy.scrollTo(scrollID, anchor: .bottom)
@@ -39,17 +47,20 @@ struct DebugLogsView: View {
                 }
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button {
-                        logger.clear()
+                        AppDebugLogger.shared.clear()
                     } label: {
                         Image(systemName: "trash")
                     }
                     Button {
-                        scrollID = UUID()
+                        Task { await reloadLogs(scrollToBottom: true) }
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
                     Button {
-                        UIPasteboard.general.string = logger.exportText()
+                        Task {
+                            let text = await loadExportText()
+                            UIPasteboard.general.string = text
+                        }
                     } label: {
                         Image(systemName: "doc.on.doc")
                     }
@@ -57,6 +68,30 @@ struct DebugLogsView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .task { await reloadLogs(scrollToBottom: false) }
+        .onReceive(
+            AppDebugLogger.shared.$revision
+                .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+        ) { _ in
+            Task { await reloadLogs(scrollToBottom: true) }
+        }
+    }
+
+    @MainActor
+    private func reloadLogs(scrollToBottom: Bool) async {
+        isLoading = true
+        let text = await loadExportText()
+        logText = text
+        isLoading = false
+        if scrollToBottom {
+            scrollID = UUID()
+        }
+    }
+
+    private func loadExportText() async -> String {
+        await Task.detached {
+            AppDebugLogger.shared.makeSnapshot().exportText
+        }.value
     }
 }
 
