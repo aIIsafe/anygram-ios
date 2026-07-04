@@ -48,11 +48,14 @@ final class ChatsViewModel: ObservableObject {
     func load() async {
         guard isAuthenticated() else { return }
         isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
         do {
-            chats = try await repository.fetchChats(includeArchived: true)
-            archivedChats = chats.filter(\.isArchived)
-            chats = chats.filter { !$0.isArchived }
+            let fetched = try await AsyncTimeout.withTimeout(seconds: 30, error: URLError(.timedOut)) {
+                try await repository.fetchChats(includeArchived: true)
+            }
+            archivedChats = fetched.filter(\.isArchived)
+            chats = fetched.filter { !$0.isArchived }
         } catch {
             errorMessage = error.localizedDescription
         }

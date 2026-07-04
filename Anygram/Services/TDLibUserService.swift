@@ -15,6 +15,7 @@ public final class TDLibUserService: UserServiceProtocol, @unchecked Sendable {
         updateHandlerID = TDLibUpdateRouter.shared.addHandler { [weak self] update in
             if case .updateAuthorizationState(let state) = update,
                case .authorizationStateReady = state.authorizationState {
+                TDLibAccessGate.shared.markAuthorized()
                 Task { _ = try? await self?.fetchContacts() }
             }
         }
@@ -39,6 +40,7 @@ public final class TDLibUserService: UserServiceProtocol, @unchecked Sendable {
     }
 
     public func fetchContacts() async throws -> [User] {
+        await waitForAuthorizedAccess()
         guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return [] }
         guard let client = TDLibSession.shared.tdClient else { return [] }
         let contacts = try await client.getContacts()
@@ -50,6 +52,13 @@ public final class TDLibUserService: UserServiceProtocol, @unchecked Sendable {
         users.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         contactsSubject.send(users)
         return users
+    }
+
+    private func waitForAuthorizedAccess() async {
+        for _ in 0..<30 {
+            if TDLibAccessGate.shared.canCallAuthenticatedAPI { return }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
     }
 
     public func fetchContact(id: UUID) async throws -> User? {

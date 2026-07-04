@@ -18,6 +18,10 @@ public final class UserRepository: ObservableObject {
             .store(in: &cancellables)
     }
 
+    public func observeContacts() -> AnyPublisher<[User], Never> {
+        userService.observeContacts()
+    }
+
     public func fetchContacts() async throws -> [User] {
         let contacts = try await userService.fetchContacts()
         cachedContacts = contacts

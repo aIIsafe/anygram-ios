@@ -21,6 +21,7 @@ final class ChatDetailViewModel: ObservableObject {
 
     func load() async {
         isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
         do {
             let fetched = try await repository.fetchMessages(for: chat.id, page: currentPage)
@@ -29,7 +30,9 @@ final class ChatDetailViewModel: ObservableObject {
                 unreadSeparatorIndex = firstUnread
             }
             simulateTyping()
-        } catch {}
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     func sendMessage() async {

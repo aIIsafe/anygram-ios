@@ -32,6 +32,7 @@ final class AuthViewModel: ObservableObject {
     private var resendTimer: Timer?
     private var loadingTimer: Timer?
     private var logRefreshTimer: Timer?
+    private var isSubmittingCode = false
     private var cancellables = Set<AnyCancellable>()
 
     init(authRepository: AuthRepository) {
@@ -159,24 +160,35 @@ final class AuthViewModel: ObservableObject {
     }
 
     func submitCode() async {
-        let code = codeDigits.joined()
+        guard !isSubmittingCode else { return }
+        let code = codeDigits.joined().filter(\.isNumber)
         guard code.count >= codeLength else {
             errorMessage = L10n.authInvalidCode
             return
         }
+        isSubmittingCode = true
         isLoading = true
         errorMessage = nil
         startLoadingTimers()
         defer {
             stopLoadingTimers()
             isLoading = false
+            isSubmittingCode = false
         }
         let repository = authRepository
         do {
             try await Task.detached(priority: .userInitiated) {
                 try await repository.submitCode(code)
             }.value
+            // TDLib transitions via updateAuthorizationState — don't treat slow updates as failure.
+            if authRepository.isAuthenticated {
+                errorMessage = nil
+            }
         } catch {
+            if authRepository.isAuthenticated {
+                errorMessage = nil
+                return
+            }
             errorMessage = error.localizedDescription
             codeDigits = Array(repeating: "", count: codeLength)
         }
@@ -222,13 +234,14 @@ final class AuthViewModel: ObservableObject {
             if !codeDigits[index].isEmpty, index < codeDigits.count - 1 {
                 focusNextIndex = index + 1
             }
-        } else if filtered.count == codeLength {
+        } else if filtered.count >= codeLength {
             for (i, char) in filtered.prefix(codeLength).enumerated() {
                 codeDigits[i] = String(char)
             }
             Task { await submitCode() }
+            return
         }
-        if codeDigits.allSatisfy({ !$0.isEmpty }) {
+        if codeDigits.allSatisfy({ !$0.isEmpty }), !isSubmittingCode {
             Task { await submitCode() }
         }
     }

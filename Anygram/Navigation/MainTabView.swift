@@ -30,11 +30,7 @@ enum AppTab: Int, CaseIterable, Identifiable {
     }
 
     var badge: Int? {
-        switch self {
-        case .chats: return 12
-        case .calls: return 2
-        default: return nil
-        }
+        nil
     }
 }
 
@@ -45,29 +41,27 @@ struct MainTabView: View {
     let container: DIContainer
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            Group {
-                switch selectedTab {
-                case .contacts:
-                    ContactsListView(container: container)
-                        .transition(.opacity)
-                case .calls:
-                    CallsListView(container: container)
-                        .transition(.opacity)
-                case .chats:
-                    ChatsListView(container: container)
-                        .transition(.opacity)
-                case .settings:
-                    SettingsRootView(container: container)
-                        .transition(.opacity)
-                case .search:
-                    GlobalSearchView(container: container)
-                        .transition(.opacity)
-                }
+        Group {
+            switch selectedTab {
+            case .contacts:
+                ContactsListView(container: container)
+                    .transition(.opacity)
+            case .calls:
+                CallsListView(container: container)
+                    .transition(.opacity)
+            case .chats:
+                ChatsListView(container: container)
+                    .transition(.opacity)
+            case .settings:
+                SettingsRootView(container: container)
+                    .transition(.opacity)
+            case .search:
+                GlobalSearchView(container: container)
+                    .transition(.opacity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.bottom, 72)
-
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             tabBar
         }
         .telegramBackground()

@@ -385,12 +385,36 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         let digits = code.filter(\.isNumber)
         guard !digits.isEmpty else { throw AuthError.invalidCode }
         AppDebugLogger.shared.log("checkAuthenticationCode len=\(digits.count)", category: .AUTH)
+        TDLibSession.shared.beginAuthOperation()
+        defer { TDLibSession.shared.endAuthOperation() }
         do {
             _ = try await AsyncTimeout.withTimeout(seconds: 15, error: AuthError.networkUnavailable) {
-                _ = try await client.checkAuthenticationCode(code: code)
+                _ = try await client.checkAuthenticationCode(code: digits)
             }
         } catch {
+            if case .ready = readCurrentState() { return }
+            if case .waitPassword = readCurrentState() { return }
             throw mapTDLibError(error, invalidCode: true, invalidPassword: false)
+        }
+        try await waitForPostCodeAuthState(timeout: 12)
+    }
+
+    /// After a successful checkAuthenticationCode call, wait for TDLib to leave waitCode.
+    private func waitForPostCodeAuthState(timeout: TimeInterval) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let state = readCurrentState()
+            if case .ready = state { return }
+            if case .waitPassword = state { return }
+            if case .waitRegistration = state { return }
+            if case .closed = state {
+                throw AuthError.tdlibError(L10n.authAuthorizationFailed)
+            }
+            if let client = TDLibSession.shared.tdClient,
+               let tdState = try? await getAuthorizationState(client: client, label: "post-code") {
+                await processAuthorizationState(tdState)
+            }
+            try await Task.sleep(nanoseconds: 200_000_000)
         }
     }
 
@@ -486,8 +510,8 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         case .authorizationStateWaitRegistration:
             publishState(.waitRegistration)
         case .authorizationStateReady:
-            publishState(.ready)
             TDLibAccessGate.shared.markAuthorized()
+            publishState(.ready)
             TDLibSession.shared.markBootstrapComplete()
             cachedUser = try? await fetchCurrentUser()
         case .authorizationStateClosed:
@@ -749,14 +773,21 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         if lowered.contains("phone number invalid") || lowered.contains("phone_number_invalid") {
             return .invalidPhoneNumber
         }
+        if invalidCode {
+            if lowered.contains("phone_code_invalid")
+                || lowered.contains("phone_code_expired")
+                || lowered.contains("code_invalid")
+                || lowered.contains("invalid code") {
+                return .invalidCode
+            }
+        }
+        if invalidPassword {
+            if lowered.contains("password_hash_invalid") || lowered.contains("invalid password") {
+                return .invalidPassword
+            }
+        }
         if lowered.contains("wait") && lowered.contains("authorization") {
             return .stillStarting
-        }
-        if invalidCode, lowered.contains("phone") || lowered.contains("code") || lowered.contains("400") {
-            return .invalidCode
-        }
-        if invalidPassword, lowered.contains("password") || lowered.contains("400") {
-            return .invalidPassword
         }
         return .tdlibError(Self.russianErrorMessage(from: message))
     }

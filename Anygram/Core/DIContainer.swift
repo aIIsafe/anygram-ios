@@ -61,7 +61,7 @@ public final class DIContainer: ObservableObject {
         #endif
 
         self.callsService = MockCallsService()
-        self.searchService = MockSearchService(
+        self.searchService = TelegramSearchService(
             chatService: chatService,
             userService: self.userService
         )
@@ -90,7 +90,7 @@ public final class DIContainer: ObservableObject {
                 }
                 self.isAuthenticated = authenticated
                 if authenticated {
-                    Task { await self.loadCurrentUser() }
+                    Task { await self.onAuthenticated() }
                 } else {
                     self.currentUser = nil
                 }
@@ -98,8 +98,15 @@ public final class DIContainer: ObservableObject {
             .store(in: &cancellables)
 
         if authService.isAuthenticated {
-            Task { await loadCurrentUser() }
+            Task { await onAuthenticated() }
         }
+    }
+
+    private func onAuthenticated() async {
+        await loadCurrentUser()
+        try? await chatRepository.fetchChats(includeArchived: true)
+        try? await userRepository.fetchContacts()
+        await searchRepository.reindex()
     }
 
     public func bootstrap() async {

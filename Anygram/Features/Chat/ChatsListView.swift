@@ -19,6 +19,12 @@ struct ChatsListView: View {
 
                 if viewModel.isLoading && viewModel.chats.isEmpty {
                     LoadingView()
+                } else if viewModel.filteredChats.isEmpty {
+                    ContentUnavailableView(
+                        viewModel.showArchived ? L10n.archivedTitle : L10n.chatsTitle,
+                        systemImage: "message",
+                        description: Text(viewModel.errorMessage ?? L10n.searchEmptyHint)
+                    )
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {

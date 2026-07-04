@@ -13,6 +13,10 @@ struct ChatDetailView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if viewModel.isLoading && viewModel.messages.isEmpty {
+                LoadingView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: AppSpacing.sm) {
@@ -109,6 +113,7 @@ struct ChatDetailView: View {
             }
             .padding(AppSpacing.sm)
             .liquidGlass(cornerRadius: 0)
+            }
         }
         .background(AppColors.background)
         .navigationTitle(chat.title)

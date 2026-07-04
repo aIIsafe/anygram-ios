@@ -64,7 +64,8 @@ struct CallsListView: View {
                         .clipShape(Circle())
                         .shadow(color: AppColors.accent.opacity(0.4), radius: 8, y: 4)
                 }
-                .padding(AppSpacing.lg)
+                .padding(.trailing, AppSpacing.lg)
+                .padding(.bottom, AppSpacing.md)
                 .accessibilityLabel(L10n.newCall)
             }
             .navigationTitle(L10n.callsTitle)

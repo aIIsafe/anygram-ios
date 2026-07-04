@@ -46,8 +46,13 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
         }
 
         lock.lock()
-        let fromMessageId = loadedHistoryOffsets[chatID] ?? 0
+        let cached = messagesByChat[chatID] ?? []
+        let fromMessageId = page == 0 ? 0 : (loadedHistoryOffsets[chatID] ?? 0)
         lock.unlock()
+
+        if page == 0, !cached.isEmpty {
+            return cached
+        }
 
         let history = try await client.getChatHistory(
             chatId: chatTelegramId,
@@ -225,6 +230,7 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
     // MARK: - Sync
 
     private func reloadAllChats() async {
+        await waitForAuthorizedAccess()
         guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return }
         guard let client = TDLibSession.shared.tdClient else { return }
         await refreshCurrentUserId()
@@ -239,10 +245,30 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
         chatsSubject.send(combined)
     }
 
-    private func loadChats(from list: ChatList, archived: Bool, client: TDLibClient) async -> [Chat] {
-        guard let chatIds = try? await client.getChats(chatList: list, limit: 200).chatIds else {
-            return []
+    private func waitForAuthorizedAccess() async {
+        for _ in 0..<30 {
+            if TDLibAccessGate.shared.canCallAuthenticatedAPI { return }
+            try? await Task.sleep(nanoseconds: 100_000_000)
         }
+    }
+
+    private func loadChats(from list: ChatList, archived: Bool, client: TDLibClient) async -> [Chat] {
+        _ = try? await client.loadChats(chatList: list, limit: 100)
+
+        var chatIds: [Int64] = []
+        let deadline = Date().addingTimeInterval(8)
+        while Date() < deadline {
+            if let ids = try? await client.getChats(chatList: list, limit: 200).chatIds, !ids.isEmpty {
+                chatIds = ids
+                break
+            }
+            try? await Task.sleep(nanoseconds: 250_000_000)
+        }
+        if chatIds.isEmpty,
+           let ids = try? await client.getChats(chatList: list, limit: 200).chatIds {
+            chatIds = ids
+        }
+
         var result: [Chat] = []
         for chatId in chatIds {
             if let chat = await mapChat(chatId: chatId, archived: archived, client: client) {
@@ -436,6 +462,7 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
         switch update {
         case .updateAuthorizationState(let state):
             if case .authorizationStateReady = state.authorizationState {
+                TDLibAccessGate.shared.markAuthorized()
                 Task { await reloadAllChats() }
             }
         case .updateNewChat, .updateChatLastMessage, .updateChatReadInbox, .updateChatPosition:

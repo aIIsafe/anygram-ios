@@ -21,14 +21,24 @@ struct SettingsRootView: View {
                         EditProfileSettingsView()
                     } label: {
                         HStack(spacing: AppSpacing.sm) {
-                            AvatarView(name: L10n.yourName, colorHex: "#3390EC", size: 60)
+                            AvatarView(
+                                name: container.currentUser?.name ?? L10n.yourName,
+                                colorHex: container.currentUser?.avatarColorHex ?? "#3390EC",
+                                size: 60
+                            )
                             VStack(alignment: .leading) {
-                                Text(L10n.yourName)
+                                Text(container.currentUser?.name ?? L10n.yourName)
                                     .font(AppTypography.headline)
                                     .foregroundStyle(AppColors.textPrimary)
-                                Text("@your_username")
-                                    .font(AppTypography.caption)
-                                    .foregroundStyle(AppColors.textSecondary)
+                                if let username = container.currentUser?.username, !username.isEmpty {
+                                    Text("@\(username)")
+                                        .font(AppTypography.caption)
+                                        .foregroundStyle(AppColors.textSecondary)
+                                } else {
+                                    Text("@your_username")
+                                        .font(AppTypography.caption)
+                                        .foregroundStyle(AppColors.textSecondary)
+                                }
                             }
                             Spacer()
                             Image(systemName: "chevron.right")
@@ -103,6 +113,7 @@ struct SettingsRootView: View {
                     .padding(.horizontal, AppSpacing.md)
                 }
                 .padding(.vertical, AppSpacing.md)
+                .padding(.bottom, AppSpacing.lg)
             }
             .background(AppColors.background)
             .navigationTitle(L10n.settingsTitle)
