@@ -73,6 +73,13 @@ public final class AuthRepository: @unchecked Sendable {
         try await authService.logout()
     }
 
+    /// Wipes TDLib storage and resets the login session without tearing down the app process.
+    public func wipeStorageAndRetryBootstrap() async {
+        AppDebugLogger.shared.log("AuthRepository.wipeStorageAndRetryBootstrap", category: .AUTH)
+        TelegramAPIConfiguration.wipeTdStorageForRecovery()
+        await networkService.resetLoginBootstrap()
+    }
+
     public func fetchCurrentUser() async throws -> User? {
         try await authService.fetchCurrentUser()
     }

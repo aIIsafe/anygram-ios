@@ -25,6 +25,7 @@ final class AuthViewModel: ObservableObject {
     @Published var loadingElapsedSeconds = 0
     @Published var recentLogLines: [String] = []
     @Published var showOpenLogsAfterError = false
+    @Published var showWipeAndRetry = false
     @Published var showDebugLogs = false
 
     private let authRepository: AuthRepository
@@ -111,6 +112,7 @@ final class AuthViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         showOpenLogsAfterError = false
+        showWipeAndRetry = false
         flowProgressText = "Шаг 0/7: начало"
         startLoadingTimers()
 
@@ -135,10 +137,25 @@ final class AuthViewModel: ObservableObject {
         } catch {
             AppDebugLogger.shared.log("submitPhone error: \(error.localizedDescription)", category: .ERROR)
             errorMessage = error.localizedDescription
+            let lowered = error.localizedDescription.lowercased()
+            if lowered.contains("api_id_invalid") || lowered.contains("неверный api id") {
+                showWipeAndRetry = true
+            }
             if error.localizedDescription.contains("TIMEOUT") || (error as? AuthError) == .stillStarting {
                 showOpenLogsAfterError = true
             }
         }
+    }
+
+    func wipeStorageAndRetry() async {
+        isLoading = true
+        errorMessage = nil
+        showWipeAndRetry = false
+        defer { isLoading = false }
+        await authRepository.wipeStorageAndRetryBootstrap()
+        errorMessage = nil
+        AppDebugLogger.shared.log("wipeStorageAndRetry complete — retry phone submit", category: .AUTH)
+        await submitPhone()
     }
 
     func submitCode() async {

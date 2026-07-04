@@ -73,6 +73,15 @@ struct PhoneInputView: View {
                         .foregroundStyle(AppColors.destructive)
                         .padding(.horizontal, AppSpacing.lg)
 
+                    if viewModel.showWipeAndRetry {
+                        Button(L10n.authWipeAndRetry) {
+                            Task { await viewModel.wipeStorageAndRetry() }
+                        }
+                        .font(AppTypography.caption)
+                        .foregroundStyle(AppColors.accent)
+                        .disabled(viewModel.isLoading)
+                    }
+
                     if viewModel.showOpenLogsAfterError {
                         Button("Открыть логи") {
                             viewModel.showDebugLogs = true

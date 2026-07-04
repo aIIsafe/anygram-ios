@@ -907,6 +907,12 @@
         "ru" : { "stringUnit" : { "state" : "translated", "value" : "Неверный API ID. Проверьте конфигурацию приложения." } }
       }
     },
+    "auth.wipeAndRetry" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Clear data and retry" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Очистить данные и повторить" } }
+      }
+    },
     "auth.floodWait %lld" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Too many attempts. Try again in %lld seconds." } },

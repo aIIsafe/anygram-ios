@@ -4,7 +4,7 @@ import Foundation
 ///
 /// Obtain credentials at https://my.telegram.org/apps
 /// Default production pair (Anygram iOS app registered at my.telegram.org):
-/// api_id **34053256**, api_hash **bc8984a70877b5768a5a6a80222da985**
+/// api_id **34053256**, api_hash **bc8984a70877b5768e5a6a80222da985**
 /// Set environment variables `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` to override for local builds.
 ///
 /// TDLib SPM setup (optional, ~300 MB download):
@@ -14,7 +14,7 @@ import Foundation
 /// 4. Build — `TDLibAuthService` automatically uses the real client via `#if canImport(TDLibKit)`
 enum TelegramAPIConfiguration {
     /// Bump when api_id/hash or TDLib layout changes — triggers Documents/td wipe on next launch.
-    static let tdlibStorageSchemaVersion = 7
+    static let tdlibStorageSchemaVersion = 8
 
     private static let storedVersionKey = "anygram.tdlib.storageVersion"
     private static let storedApiIdKey = "anygram.tdlib.lastApiId"
@@ -29,7 +29,7 @@ enum TelegramAPIConfiguration {
     }
 
     static var apiHash: String {
-        ProcessInfo.processInfo.environment["TELEGRAM_API_HASH"] ?? "bc8984a70877b5768a5a6a80222da985"
+        ProcessInfo.processInfo.environment["TELEGRAM_API_HASH"] ?? "bc8984a70877b5768e5a6a80222da985"
     }
 
     /// Masked api_hash for debug logs: first 4 + last 3 characters.
