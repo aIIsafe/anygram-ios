@@ -22,7 +22,7 @@ public final class TDLibSearchService: SearchServiceProtocol, @unchecked Sendabl
     }
 
     private func searchChats(query: String, client: TDLibClient) async -> [SearchResult] {
-        guard let chatIds = try? await client.searchChatsOnServer(query: query, limit: 20).chatIds else {
+        guard let chatIds = try? await client.searchChatsOnServer(limit: 20, query: query).chatIds else {
             return []
         }
         var results: [SearchResult] = []
@@ -52,7 +52,7 @@ public final class TDLibSearchService: SearchServiceProtocol, @unchecked Sendabl
     }
 
     private func searchContacts(query: String, client: TDLibClient) async -> [SearchResult] {
-        guard let userIds = try? await client.searchContacts(query: query, limit: 20).userIds else {
+        guard let userIds = try? await client.searchContacts(limit: 20, query: query).userIds else {
             return []
         }
         var results: [SearchResult] = []
