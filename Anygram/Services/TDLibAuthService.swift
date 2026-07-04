@@ -208,6 +208,21 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         _ = TDLibSession.shared.ensureClient()
     }
 
+    private func readCurrentState() -> AuthAuthorizationState {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return currentState
+    }
+
+    private func publishState(_ newState: AuthAuthorizationState) {
+        stateLock.lock()
+        currentState = newState
+        stateLock.unlock()
+        Task { @MainActor in
+            self.onStateChange?(newState)
+        }
+    }
+
     func initialize() async throws {
         AppDebugLogger.shared.log("initialize start", category: .AUTH)
         guard TelegramAPIConfiguration.isConfigured else {
@@ -216,7 +231,9 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         }
         TelegramAPIConfiguration.performStorageMigrationIfNeeded()
         AuthConnectionStatus.postProgress(step: 1, total: 7, label: "ensureClient + register handler")
-        _ = TDLibSession.shared.ensureClient()
+        guard TDLibSession.shared.ensureClient() != nil else {
+            throw AuthError.notConfigured
+        }
         AuthConnectionStatus.postProgress(step: 2, total: 7, label: "awaitBootstrap (setLogStream → setTdlibParameters → waitPhoneNumber)")
         try await TDLibSession.shared.awaitBootstrap(timeout: 12)
 
@@ -247,34 +264,20 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         let masked = Self.maskPhone(phoneNumber)
         AppDebugLogger.shared.log("setPhoneNumber start phone=\(masked)", category: .AUTH)
 
+        TDLibSession.shared.beginAuthOperation()
+        defer { TDLibSession.shared.endAuthOperation() }
+
         try await AsyncTimeout.withTimeout(seconds: 15, error: AuthError.tdlibError("TIMEOUT at step submitPhoneNumber (15s)")) {
-            for attempt in 0..<2 {
-                do {
-                    try await self.submitPhoneNumberFlow(
-                        phoneNumber: phoneNumber,
-                        masked: masked,
-                        isRetry: attempt > 0
-                    )
-                    return
-                } catch {
-                    let isInvalid = Self.rawTDLibErrorMessage(from: error)
-                        .localizedCaseInsensitiveContains("api_id_invalid")
-                        || ((error as? AuthError).map { Self.isApiIdInvalid($0) } ?? false)
-                    if isInvalid, attempt == 0 {
-                        AppDebugLogger.shared.log("[AUTH] API_ID_INVALID — safe recovery, retry once", category: .AUTH)
-                        try await self.recoverFromApiIdInvalid()
-                        continue
-                    }
-                    throw error
-                }
-            }
+            try await self.submitPhoneNumberFlow(
+                phoneNumber: phoneNumber,
+                masked: masked
+            )
         }
     }
 
     private func submitPhoneNumberFlow(
         phoneNumber: String,
-        masked: String,
-        isRetry: Bool
+        masked: String
     ) async throws {
         guard TDLibSession.shared.tdClient != nil else {
             AppDebugLogger.shared.log("setPhoneNumber: no tdClient", category: .ERROR)
@@ -417,8 +420,7 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         if let client = TDLibSession.shared.tdClient {
             _ = try await client.logOut()
         }
-        currentState = .waitPhoneNumber
-        onStateChange?(currentState)
+        publishState(.waitPhoneNumber)
     }
 
     func fetchCurrentUser() async throws -> User? {
@@ -468,39 +470,32 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
         authLogger.debug("authorization state: \(name, privacy: .public)")
         AppDebugLogger.shared.log("processAuthorizationState: \(name)", category: .AUTH)
 
-        let publish: @Sendable (AuthAuthorizationState) -> Void = { [weak self] newState in
-            Task { @MainActor in
-                self?.currentState = newState
-                self?.onStateChange?(newState)
-            }
-        }
-
         switch state {
         case .authorizationStateWaitTdlibParameters:
             AppDebugLogger.shared.log("[AUTH] waitTdlibParameters (state sync only — apply via update handler)", category: .AUTH)
         case .authorizationStateWaitPhoneNumber:
             TDLibSession.shared.markBootstrapComplete()
-            publish(.waitPhoneNumber)
+            publishState(.waitPhoneNumber)
         case .authorizationStateWaitCode(let waitCode):
             let length = Self.codeLength(from: waitCode.codeInfo)
             let timeout = max(Int(waitCode.codeInfo.timeout), 0)
-            publish(.waitCode(codeLength: length, resendTimeout: timeout > 0 ? timeout : 60))
+            publishState(.waitCode(codeLength: length, resendTimeout: timeout > 0 ? timeout : 60))
             TDLibSession.shared.markBootstrapComplete()
         case .authorizationStateWaitPassword(let info):
-            publish(.waitPassword(hint: info.passwordHint))
+            publishState(.waitPassword(hint: info.passwordHint))
         case .authorizationStateWaitRegistration:
-            publish(.waitRegistration)
+            publishState(.waitRegistration)
         case .authorizationStateReady:
-            publish(.ready)
+            publishState(.ready)
             TDLibAccessGate.shared.markAuthorized()
             TDLibSession.shared.markBootstrapComplete()
             cachedUser = try? await fetchCurrentUser()
         case .authorizationStateClosed:
             cachedUser = nil
-            publish(.closed)
+            publishState(.closed)
         case .authorizationStateLoggingOut:
             cachedUser = nil
-            publish(.waitPhoneNumber)
+            publishState(.waitPhoneNumber)
         default:
             break
         }
@@ -620,20 +615,19 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
             parametersApplyLock.unlock()
             AppDebugLogger.shared.log("[AUTH] setTdlibParameters FAILED: \(rawMessage)", category: .ERROR)
             authLogger.error("setTdlibParameters failed: \(rawMessage, privacy: .public)")
-            currentState = .closed
-            onStateChange?(currentState)
+            publishState(.closed)
         }
     }
 
     /// Poll getAuthorizationState until waitPhoneNumber — capped timeout (was 30s in initialize, caused hang).
     private func waitForPhoneNumberState(timeout: TimeInterval) async throws {
-        if case .waitPhoneNumber = currentState { return }
+        if case .waitPhoneNumber = readCurrentState() { return }
 
         AuthConnectionStatus.post(.waitingTdlib)
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if case .waitPhoneNumber = currentState { return }
-            if case .closed = currentState {
+            if case .waitPhoneNumber = readCurrentState() { return }
+            if case .closed = readCurrentState() {
                 throw AuthError.tdlibError(L10n.authAuthorizationFailed)
             }
 
@@ -658,28 +652,6 @@ private final class TDLibAuthBackend: AuthBackend, @unchecked Sendable {
             authLogger.error("Timed out waiting for phone state; TDLib state: \(name, privacy: .public)")
         }
         throw AuthError.stillStarting
-    }
-
-    /// Wipe stale TDLib DB and re-bootstrap after API_ID_INVALID (stale api_id in database).
-    private func recoverFromApiIdInvalid() async throws {
-        AppDebugLogger.shared.log("[AUTH] recoverFromApiIdInvalid start", category: .AUTH)
-        TelegramAPIConfiguration.wipeTdStorageForRecovery()
-        parametersApplyLock.lock()
-        parametersApplied = false
-        parametersApplyInProgress = false
-        activeParametersApplyTask = nil
-        parametersApplyLock.unlock()
-        TDLibAccessGate.shared.reset()
-        await TDLibSession.shared.resetClientSafely()
-        try await initialize()
-        AppDebugLogger.shared.log("[AUTH] recoverFromApiIdInvalid done", category: .AUTH)
-    }
-
-    private static func isApiIdInvalid(_ error: AuthError) -> Bool {
-        if case .tdlibError(let message) = error {
-            return message.lowercased().contains("api_id_invalid")
-        }
-        return false
     }
 
     private static func authorizationStateName(_ state: AuthorizationState) -> String {

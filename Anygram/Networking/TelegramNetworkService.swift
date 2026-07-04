@@ -62,16 +62,14 @@ public final class TelegramNetworkService: @unchecked Sendable {
         AppDebugLogger.shared.log("bootstrapForLogin complete", category: .NETWORK)
     }
 
-    public func resetLoginBootstrap() {
+    public func resetLoginBootstrap() async {
         lock.lock()
         loginSessionPrepared = false
         lock.unlock()
         AppDebugLogger.shared.log("resetLoginBootstrap + resetClientSafely", category: .NETWORK)
         #if canImport(TDLibKit)
         TDLibProxyApplier.resetAppliedProxy()
-        Task {
-            await TDLibSession.shared.resetClientSafely()
-        }
+        await TDLibSession.shared.resetClientSafely()
         #endif
     }
 

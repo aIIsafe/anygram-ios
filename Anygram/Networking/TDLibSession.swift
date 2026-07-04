@@ -29,6 +29,10 @@ public final class TDLibSession: @unchecked Sendable {
     private var bootstrapComplete = false
     private var bootstrapWaiters: [CheckedContinuation<Void, Never>] = []
     private var resetTask: Task<Void, Never>?
+    /// Suppresses TDLib update callbacks while the client is being torn down/recreated.
+    private var isResetting = false
+    /// True while setAuthenticationPhoneNumber (or similar) is in flight — reset waits for this.
+    private var authOperationInProgress = false
 
     private init() {}
 
@@ -51,22 +55,36 @@ public final class TDLibSession: @unchecked Sendable {
         AppDebugLogger.shared.log("registerAuthUpdateHandler", category: .TDLIB)
     }
 
+    /// Marks the start of a serialized auth API call (phone/code/password). Reset waits until this ends.
+    public func beginAuthOperation() {
+        lock.lock()
+        authOperationInProgress = true
+        lock.unlock()
+    }
+
+    /// Marks the end of a serialized auth API call.
+    public func endAuthOperation() {
+        lock.lock()
+        authOperationInProgress = false
+        lock.unlock()
+    }
+
     /// Create TDLib client using the previously registered auth handler.
     @discardableResult
-    public func ensureClient() -> TDLibClient {
+    public func ensureClient() -> TDLibClient? {
         lock.lock()
         let handler = primaryUpdateHandler
         lock.unlock()
         guard let handler else {
-            AppDebugLogger.shared.log("FATAL: ensureClient() without registerAuthUpdateHandler", category: .ERROR)
-            fatalError("Call registerAuthUpdateHandler before ensureClient()")
+            AppDebugLogger.shared.log("ensureClient() skipped: registerAuthUpdateHandler not called yet", category: .ERROR)
+            return nil
         }
         return ensureClient(updateHandler: handler)
     }
 
     /// BetterTG: create client + register update handler before any TDLib calls.
     @discardableResult
-    public func ensureClient(updateHandler: @escaping (Data, TDLibClient) -> Void) -> TDLibClient {
+    public func ensureClient(updateHandler: @escaping (Data, TDLibClient) -> Void) -> TDLibClient? {
         TelegramAPIConfiguration.performStorageMigrationIfNeeded()
 
         lock.lock()
@@ -96,8 +114,8 @@ public final class TDLibSession: @unchecked Sendable {
         }
 
         guard let activeClient else {
-            AppDebugLogger.shared.log("FATAL: TDLib client nil after ensureClient", category: .ERROR)
-            fatalError("TDLib client failed to initialize")
+            AppDebugLogger.shared.log("ensureClient: TDLib client nil after create", category: .ERROR)
+            return nil
         }
         return activeClient
     }
@@ -125,8 +143,11 @@ public final class TDLibSession: @unchecked Sendable {
     }
 
     private func performResetClientSafely() async {
+        await waitForAuthOperationToFinish()
+
         AppDebugLogger.shared.log("resetClientSafely: closing clients", category: .TDLIB)
         lock.lock()
+        isResetting = true
         bootstrapTask?.cancel()
         bootstrapTask = nil
         manager?.closeClients()
@@ -146,12 +167,16 @@ public final class TDLibSession: @unchecked Sendable {
         TDLibAccessGate.shared.reset()
         NotificationCenter.default.post(name: Self.sessionResetNotification, object: nil)
 
-        try? await Task.sleep(nanoseconds: 600_000_000)
+        // Let in-flight TDLibKit callbacks drain before recreating the client (use-after-free guard).
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
 
         lock.lock()
         let handler = primaryUpdateHandler
         lock.unlock()
         guard let handler else {
+            lock.lock()
+            isResetting = false
+            lock.unlock()
             AppDebugLogger.shared.log("resetClientSafely: no auth handler registered", category: .ERROR)
             return
         }
@@ -164,12 +189,25 @@ public final class TDLibSession: @unchecked Sendable {
         }
         bootstrapStarted = true
         let activeClient = client
+        isResetting = false
         lock.unlock()
 
         if let activeClient {
             startBootstrap(client: activeClient)
-            try? await awaitBootstrap(timeout: 15)
         }
+        _ = handler
+    }
+
+    private func waitForAuthOperationToFinish() async {
+        let deadline = Date().addingTimeInterval(20)
+        while Date() < deadline {
+            lock.lock()
+            let busy = authOperationInProgress
+            lock.unlock()
+            if !busy { return }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        AppDebugLogger.shared.log("resetClientSafely: timed out waiting for auth operation", category: .ERROR)
     }
 
     public func close() {
@@ -190,8 +228,10 @@ public final class TDLibSession: @unchecked Sendable {
 
     private func dispatchUpdate(data: Data, client: TDLibClient) {
         lock.lock()
+        let resetting = isResetting
         let handler = primaryUpdateHandler
         lock.unlock()
+        guard !resetting else { return }
         handler?(data, client)
         TDLibUpdateRouter.shared.route(data: data, client: client)
     }

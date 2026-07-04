@@ -40,7 +40,7 @@ public final class AuthRepository: @unchecked Sendable {
         } catch {
             AppDebugLogger.shared.log("AuthRepository.submitPhoneNumber failed: \(error.localizedDescription)", category: .ERROR)
             if shouldResetSession(after: error) {
-                networkService.resetLoginBootstrap()
+                await networkService.resetLoginBootstrap()
             }
             throw error
         }
