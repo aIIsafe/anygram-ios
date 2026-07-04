@@ -68,7 +68,7 @@ final class ChatDetailViewModel: ObservableObject {
         }
     }
 
-    private static func userFacingError(_ error: Error) -> String {
+    private static func userFacingError(_ error: Swift.Error) -> String {
         #if canImport(TDLibKit)
         if let tdError = error as? TDLibKit.Error {
             return tdError.message
