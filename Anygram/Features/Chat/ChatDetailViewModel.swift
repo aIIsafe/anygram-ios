@@ -1,6 +1,10 @@
 import Combine
 import Foundation
 
+#if canImport(TDLibKit)
+import TDLibKit
+#endif
+
 @MainActor
 final class ChatDetailViewModel: ObservableObject {
     @Published var messages: [Message] = []
