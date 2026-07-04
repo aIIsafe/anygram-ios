@@ -21,6 +21,8 @@ xcodebuild -resolvePackageDependencies \
   "${XCODE_BUILD_FLAGS[@]}"
 
 echo "Building unsigned Release for iOS (BetterTG-style build, not archive)..."
+set +e
+BUILD_LOG="$RUNNER_TEMP/xcodebuild.log"
 xcodebuild build \
   -project Anygram.xcodeproj \
   -scheme Anygram \
@@ -35,7 +37,14 @@ xcodebuild build \
   DEVELOPMENT_TEAM="" \
   PROVISIONING_PROFILE_SPECIFIER="" \
   IPHONEOS_DEPLOYMENT_TARGET=17.0 \
-  ONLY_ACTIVE_ARCH=NO
+  ONLY_ACTIVE_ARCH=NO 2>&1 | tee "$BUILD_LOG"
+BUILD_STATUS=${PIPESTATUS[0]}
+set -e
+if [[ "$BUILD_STATUS" -ne 0 ]]; then
+  echo "::error::xcodebuild failed (exit $BUILD_STATUS)"
+  grep -E " error: | BUILD FAILED |Anygram.app not found" "$BUILD_LOG" | tail -n 40 || tail -n 80 "$BUILD_LOG"
+  exit "$BUILD_STATUS"
+fi
 
 APP_PATH="$(find "$DERIVED_DATA" -path "*/Build/Products/Release-iphoneos/Anygram.app" -type d | head -1)"
 if [[ -z "$APP_PATH" || ! -d "$APP_PATH" ]]; then

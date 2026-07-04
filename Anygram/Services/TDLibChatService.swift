@@ -755,10 +755,8 @@ public final class TDLibChatService: ChatServiceProtocol, @unchecked Sendable {
                 TDLibAccessGate.shared.markAuthorized()
                 Task { await reloadAllChats() }
             }
-        case .updateChatList:
-            guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return }
-            scheduleDebouncedReload()
-        case .updateNewChat, .updateChatLastMessage, .updateChatReadInbox, .updateChatPosition:
+        case .updateNewChat, .updateChatLastMessage, .updateChatReadInbox, .updateChatPosition,
+             .updateChatAddedToList, .updateChatRemovedFromList:
             guard TDLibAccessGate.shared.canCallAuthenticatedAPI else { return }
             scheduleDebouncedReload()
         case .updateNewMessage(let payload):
