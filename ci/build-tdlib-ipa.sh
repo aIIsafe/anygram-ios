@@ -3,46 +3,36 @@ set -euo pipefail
 
 DERIVED_DATA="${DERIVED_DATA:-$RUNNER_TEMP/DerivedData}"
 IPA_OUTPUT="${IPA_OUTPUT:-$RUNNER_TEMP/Anygram-tdlib.ipa}"
-SOURCE_PACKAGES="${DERIVED_DATA}/SourcePackages"
-NCPU="$(sysctl -n hw.ncpu 2>/dev/null || echo 4)"
+BUILD_LOG="${BUILD_LOG:-$RUNNER_TEMP/xcodebuild-build.log}"
 
-XCODE_BUILD_FLAGS=(
-  -jobs "$NCPU"
-  COMPILER_INDEX_STORE_ENABLE=NO
-  SWIFT_INDEX_STORE_ENABLE=NO
-)
-
-echo "Resolving Swift packages (derivedDataPath=$DERIVED_DATA)..."
+echo "Resolving Swift packages..."
 xcodebuild -resolvePackageDependencies \
   -project Anygram.xcodeproj \
   -scheme Anygram \
-  -derivedDataPath "$DERIVED_DATA" \
-  -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
-  "${XCODE_BUILD_FLAGS[@]}"
+  -derivedDataPath "$DERIVED_DATA"
 
 echo "Building unsigned Release for iOS (BetterTG-style build, not archive)..."
 set +e
-BUILD_LOG="$RUNNER_TEMP/xcodebuild.log"
 xcodebuild build \
   -project Anygram.xcodeproj \
   -scheme Anygram \
   -configuration Release \
   -destination "generic/platform=iOS" \
   -derivedDataPath "$DERIVED_DATA" \
-  -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
-  "${XCODE_BUILD_FLAGS[@]}" \
   CODE_SIGNING_ALLOWED=NO \
   CODE_SIGNING_REQUIRED=NO \
   CODE_SIGN_IDENTITY="-" \
   DEVELOPMENT_TEAM="" \
   PROVISIONING_PROFILE_SPECIFIER="" \
   IPHONEOS_DEPLOYMENT_TARGET=17.0 \
-  ONLY_ACTIVE_ARCH=NO 2>&1 | tee "$BUILD_LOG"
-BUILD_STATUS=${PIPESTATUS[0]}
+  -quiet \
+  > "$BUILD_LOG" 2>&1
+BUILD_STATUS=$?
 set -e
+
 if [[ "$BUILD_STATUS" -ne 0 ]]; then
   echo "::error::xcodebuild failed (exit $BUILD_STATUS)"
-  grep -E " error: | BUILD FAILED |Anygram.app not found" "$BUILD_LOG" | tail -n 40 || tail -n 80 "$BUILD_LOG"
+  grep -E " error: | BUILD FAILED " "$BUILD_LOG" | tail -n 40 || tail -n 80 "$BUILD_LOG"
   exit "$BUILD_STATUS"
 fi
 
@@ -50,6 +40,7 @@ APP_PATH="$(find "$DERIVED_DATA" -path "*/Build/Products/Release-iphoneos/Anygra
 if [[ -z "$APP_PATH" || ! -d "$APP_PATH" ]]; then
   echo "::error::Anygram.app not found in $DERIVED_DATA"
   find "$DERIVED_DATA" -name "Anygram.app" -type d || true
+  tail -n 80 "$BUILD_LOG" || true
   exit 1
 fi
 

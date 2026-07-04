@@ -149,8 +149,9 @@ jobs:
             ~/Library/Caches/org.swift.swiftpm
             ~/Library/org.swift.swiftpm
             ${{ runner.temp }}/DerivedData
-          key: ${{ runner.os }}-tdlib-v4-${{ hashFiles('project.yml', 'ci/build-tdlib-ipa.sh') }}
+          key: ${{ runner.os }}-tdlib-v5-${{ hashFiles('project.yml', 'ci/build-tdlib-ipa.sh') }}
           restore-keys: |
+            ${{ runner.os }}-tdlib-v5-
             ${{ runner.os }}-tdlib-v4-
             ${{ runner.os }}-tdlib-
 
@@ -190,6 +191,14 @@ jobs:
         run: |
           chmod +x ci/build-tdlib-ipa.sh
           ci/build-tdlib-ipa.sh
+
+      - name: Upload xcodebuild log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: ${{ runner.temp }}/xcodebuild-build.log
+          if-no-files-found: ignore
 
       - name: Upload TDLib IPA artifact
         uses: actions/upload-artifact@v4
